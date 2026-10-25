@@ -41,6 +41,13 @@ jobs:
           cache-dependency-path: services/api/requirements-dev.txt
       - name: Install dependencies
         run: python -m pip install -r requirements-dev.txt
+      - name: Alembic migration smoke test (SQLite)
+        env:
+          ENVIRONMENT: testing
+          DEBUG: "false"
+          DATABASE_URL: sqlite+aiosqlite:////tmp/ps05-migration-smoke.db
+          REDIS_URL: redis://localhost:6379/15
+        run: python -m alembic upgrade head
       - name: Ruff
         run: python -m ruff check .
       - name: Pytest
