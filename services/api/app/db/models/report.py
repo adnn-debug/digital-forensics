@@ -31,6 +31,11 @@ class Report(Base):
     )
     report_number: Mapped[str] = mapped_column(String(64), unique=True, index=True, nullable=False)
     title: Mapped[str] = mapped_column(String(255), nullable=False)
+    examiner_certification: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    jurisdiction: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    court_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    docket_number: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    classification_marking: Mapped[str | None] = mapped_column(String(128), nullable=True)
     generated_by_id: Mapped[UUID | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True,
