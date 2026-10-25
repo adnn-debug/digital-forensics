@@ -89,9 +89,9 @@ class Settings(BaseSettings):
         if self.ENVIRONMENT == "production":
             if self.DEBUG:
                 raise ValueError("DEBUG must be false in production.")
-            if len(self.SECRET_KEY) < 32 or self.SECRET_KEY.startswith("ps05-insecure"):
+            if len(self.SECRET_KEY) < 32 or self.SECRET_KEY.startswith("ps05-insecure") or "CHANGE_ME" in self.SECRET_KEY:
                 raise ValueError("Configure a unique random SECRET_KEY of at least 32 characters.")
-            if "forensic_secure_pass_2026" in self.DATABASE_URL:
+            if "forensic_secure_pass_2026" in self.DATABASE_URL or "CHANGE_ME" in self.DATABASE_URL:
                 raise ValueError("Configure a unique database password before production.")
         return self
 
