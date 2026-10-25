@@ -15,6 +15,17 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  compose:
+    name: Docker Compose configuration
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate Compose configuration and required environment wiring
+        env:
+          POSTGRES_PASSWORD: ci-compose-only-password-please-discard
+          SECRET_KEY: ci-compose-only-signing-key-please-discard-0123456789
+        run: docker compose config --quiet
+
   backend:
     name: Backend tests and lint
     runs-on: ubuntu-latest
