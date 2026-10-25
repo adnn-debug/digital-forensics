@@ -183,6 +183,17 @@ async def test_public_report_verification_detects_archived_pdf_tampering(
     assert report.court_name == "Demo Forensic Review Court"
     assert report.docket_number == "DEMO-2026-001"
 
+    pdf_response = await async_client.get(
+        f"/api/v1/cases/{case_id}/reports/{report_id}/download",
+        headers=report_test_context["headers"],
+    )
+    assert pdf_response.status_code == 200, pdf_response.text
+    pdf_text = " ".join(
+        page.extract_text() or ""
+        for page in pypdf.PdfReader(io.BytesIO(pdf_response.content)).pages
+    )
+    assert report.verification_token in pdf_text
+
     verify_url = f"/api/v1/reports/verify?token={report.verification_token}"
     verified = await async_client.get(verify_url)
     assert verified.status_code == 200, verified.text
