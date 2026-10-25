@@ -1,4 +1,4 @@
-"""Health and readiness probe endpoints."""
+"""Health and readiness probe endpoints with sanitized public diagnostics."""
 
 from datetime import UTC, datetime
 from typing import Any
@@ -30,33 +30,43 @@ async def health_check() -> dict[str, Any]:
     }
 
 
+def _public_dependency_status(result: dict[str, Any]) -> dict[str, Any]:
+    """Expose only safe health fields; never return connection strings, paths, or exception text."""
+    safe: dict[str, Any] = {"status": result.get("status", "UNHEALTHY")}
+    latency = result.get("latency_ms")
+    if isinstance(latency, (int, float)):
+        safe["latency_ms"] = latency
+    return safe
+
+
 @router.get(
     "/ready",
     summary="Readiness Probe",
     description="Tests active connectivity to PostgreSQL, Redis, and storage vaults.",
 )
 async def readiness_check(response: Response) -> dict[str, Any]:
-    """
-    Readiness probe testing essential downstream dependencies.
-
-    Returns HTTP 200 when ready to receive traffic, or HTTP 503 if an essential
-    subsystem is unavailable.
-    """
+    """Return safe subsystem statuses and HTTP 503 when a required dependency is unavailable."""
     settings = get_settings()
     storage = get_storage()
 
-    # Execute subsystem checks concurrently / sequentially
     db_health = await check_db_connectivity()
     redis_health = await check_redis_connectivity()
     storage_health = storage.check_storage_health()
 
-    is_db_ready = db_health.get("status") == "HEALTHY"
-    is_storage_ready = storage_health.get("status") == "HEALTHY"
-    is_redis_ready = redis_health.get("status") == "HEALTHY"
+    db_public = _public_dependency_status(db_health)
+    redis_public = _public_dependency_status(redis_health)
+    storage_public = {
+        "status": storage_health.get("status", "UNHEALTHY"),
+        "directories": {
+            name: {"status": info.get("status", "UNHEALTHY")}
+            for name, info in storage_health.get("directories", {}).items()
+        },
+    }
 
-    # Overall readiness evaluation
-    all_ready = is_db_ready and is_storage_ready and is_redis_ready
-
+    all_ready = all(
+        item.get("status") == "HEALTHY"
+        for item in (db_public, redis_public, storage_public)
+    )
     if not all_ready:
         response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
 
@@ -65,8 +75,8 @@ async def readiness_check(response: Response) -> dict[str, Any]:
         "environment": settings.ENVIRONMENT,
         "timestamp": datetime.now(UTC).isoformat(),
         "subsystems": {
-            "database": db_health,
-            "redis": redis_health,
-            "storage": storage_health,
+            "database": db_public,
+            "redis": redis_public,
+            "storage": storage_public,
         },
     }
