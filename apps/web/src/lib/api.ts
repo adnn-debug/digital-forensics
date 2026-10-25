@@ -348,7 +348,8 @@ export async function uploadEvidenceWithProgress(
   return new Promise((resolve, reject) => {
     const query = new URLSearchParams();
     if (evidenceNumber) query.set("evidence_number", evidenceNumber);
-    const suffix = query.size ? `?${query.toString()}` : "";
+    const queryString = query.toString();
+    const suffix = queryString ? `?${queryString}` : "";
     const xhr = new XMLHttpRequest();
     xhr.open(
       "POST",
@@ -416,8 +417,9 @@ export async function getAnalysisHistory(filters: {
   for (const [key, value] of Object.entries(filters)) {
     if (value !== undefined && value !== "") query.set(key, String(value));
   }
+  const queryString = query.toString();
   return apiRequest<PaginatedResponse<ForensicAnalysisJob>>(
-    `/analysis/history${query.size ? `?${query.toString()}` : ""}`,
+    `/analysis/history${queryString ? `?${queryString}` : ""}`,
   );
 }
 
