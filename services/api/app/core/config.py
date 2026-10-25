@@ -105,6 +105,8 @@ class Settings(BaseSettings):
                 raise ValueError("A deployed environment must not use a localhost database.")
             if "localhost" in self.REDIS_URL or "127.0.0.1" in self.REDIS_URL:
                 raise ValueError("A deployed environment must not use a localhost Redis instance.")
+            if not self.FRONTEND_URL.startswith("https://"):
+                raise ValueError("FRONTEND_URL must use HTTPS in staging and production.")
         return self
 
     @field_validator(
