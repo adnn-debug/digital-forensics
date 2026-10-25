@@ -46,16 +46,20 @@ make setup
 Copy the template and replace both placeholders with unique values. Do not commit your local `.env` file.
 
 ```bash
+# Linux/macOS/Git Bash
 cp .env.example .env
+
+# Windows PowerShell
+Copy-Item .env.example .env
 ```
 
 Generate a strong API signing key with Python:
 
 ```bash
-python -c "import secrets; print(secrets.token_urlsafe(48))"
+python -c "import secrets; print(secrets.token_hex(32))"
 ```
 
-Use the generated value for `SECRET_KEY`, choose a unique `POSTGRES_PASSWORD`, and update the password in `DATABASE_URL` to match. The Compose configuration now refuses to start without the required values. PostgreSQL and Redis are private to the Compose network; the web and API ports bind to localhost for local development.
+Use a generated random value for `SECRET_KEY`. Generate a second value with the same command for `POSTGRES_PASSWORD`, then copy that exact database password into `DATABASE_URL`. `token_hex(32)` produces URL-safe hexadecimal characters, avoiding connection-string parsing errors. Do not reuse the API signing key as the database password. The Compose configuration refuses to start without the required values. PostgreSQL and Redis are private to the Compose network; the web and API ports bind to localhost for local development.
 
 #### 3. Run with Docker Compose
 ```bash
@@ -66,7 +70,7 @@ docker compose up -d
 docker compose ps
 ```
 
-#### 3. Run Locally (Direct Development Mode)
+#### 4. Run Locally (Direct Development Mode)
 
 **Backend API:**
 ```bash
