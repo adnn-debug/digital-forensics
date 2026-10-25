@@ -11,7 +11,7 @@ const contentSecurityPolicy = [
   "font-src 'self' data:",
   "style-src 'self' 'unsafe-inline'",
   `script-src 'self' 'unsafe-inline'${isProduction ? "" : " 'unsafe-eval'"}`,
-  "connect-src 'self'",
+  `connect-src 'self'${isProduction ? "" : " ws://localhost:* ws://127.0.0.1:*"}`,
 ].join("; ");
 
 const securityHeaders = [
