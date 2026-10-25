@@ -78,6 +78,7 @@ def test_production_accepts_explicit_safe_configuration() -> None:
         SECRET_KEY="a" * 64,
         DATABASE_URL="postgresql+asyncpg://user:password@db.internal:5432/ps05",
         REDIS_URL="redis://redis.internal:6379/0",
+        FRONTEND_URL="https://forensics.example.test",
     )
     assert settings.ENVIRONMENT == "production"
     assert settings.DEBUG is False
