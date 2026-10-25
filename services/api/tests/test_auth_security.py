@@ -63,8 +63,7 @@ async def test_revoked_token_id_is_rejected() -> None:
 async def test_login_rate_limit_rejects_excessive_account_attempts() -> None:
     """More than ten attempts for one account in the window must be throttled."""
     client = SimpleNamespace(
-        incr=AsyncMock(side_effect=[1, 11]),
-        expire=AsyncMock(),
+        eval=AsyncMock(return_value=[1, 11]),
         close=AsyncMock(),
     )
     with (
