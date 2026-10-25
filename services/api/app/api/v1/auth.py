@@ -28,6 +28,11 @@ logger = logging.getLogger("ps05.auth")
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
 
+def _request_ip(request: Request) -> str | None:
+    """Return the direct peer IP; do not trust spoofable X-Forwarded-For headers."""
+    return request.client.host if request.client else None
+
+
 @router.post(
     "/login",
     response_model=TokenResponse,
@@ -39,23 +44,14 @@ async def login(
     request: Request,
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> Any:
-    """
-    Exchange valid credentials for a signed JWT access token.
-
-    - Normalises the email before lookup.
-    - Uses bcrypt constant-time comparison — never leaks which field was wrong.
-    - Records a LOGIN audit event on success.
-    """
+    """Authenticate credentials and append a typed LOGIN audit event."""
     user_repo = UserRepository(db)
     audit_repo = AuditRepository(db)
-
-    # Normalise email before lookup to prevent case-confusion attacks
     user = await user_repo.get_by_email(payload.email.lower().strip())
 
-    # Constant-time path: always verify even if user is None (prevents timing oracle)
+    # Verify even when the account does not exist to reduce timing-based account discovery.
     dummy_hash = "$2b$12$aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-    stored_hash = user.hashed_password if user else dummy_hash
-    password_ok = verify_password(payload.password, stored_hash)
+    password_ok = verify_password(payload.password, user.hashed_password if user else dummy_hash)
 
     if not user or not password_ok or not user.is_active:
         raise HTTPException(
@@ -68,34 +64,38 @@ async def login(
         )
 
     token = create_access_token(subject=user.id, role=user.role)
+    timestamp = datetime.now(UTC)
+    previous = await audit_repo.get_latest_event()
+    previous_hash = previous.event_hash if previous else None
+    ip_address = _request_ip(request)
+    action = f"User {user.id} authenticated successfully"
 
-    # Append an immutable login audit event
-    ts = datetime.now(UTC).isoformat()
     event_hash = compute_event_hash(
-        event_type=AuditEventType.CASE_STATUS_CHANGED.value,  # closest generic type
-        action_description=f"User {user.email} authenticated successfully",
+        event_type=AuditEventType.LOGIN.value,
+        action_description=action,
         user_id=str(user.id),
         case_id=None,
-        previous_hash=None,
-        timestamp=ts,
+        previous_hash=previous_hash,
+        timestamp=timestamp.isoformat(),
     )
-    audit_event = AuditEventCreate(
-        user_id=user.id,
-        case_id=None,
-        evidence_id=None,
-        event_type=AuditEventType.CASE_STATUS_CHANGED,
-        action_description=f"User {user.email} authenticated from {request.client.host if request.client else 'unknown'}",
-        ip_address=request.client.host if request.client else None,
-        user_agent=request.headers.get("user-agent"),
-        previous_state_hash=None,
-        event_hash=event_hash,
-        payload_delta={"action": "LOGIN"},
+    await audit_repo.append_event(
+        AuditEventCreate(
+            user_id=user.id,
+            case_id=None,
+            evidence_id=None,
+            event_type=AuditEventType.LOGIN,
+            action_description=action,
+            ip_address=ip_address,
+            user_agent=request.headers.get("user-agent"),
+            previous_state_hash=previous_hash,
+            event_hash=event_hash,
+            payload_delta={"action": "LOGIN"},
+            timestamp=timestamp,
+        )
     )
-    await audit_repo.append_event(audit_event)
     await db.commit()
 
-    logger.info("User %s logged in from %s", user.email, request.client.host if request.client else "unknown")
-
+    logger.info("User %s logged in from %s", user.id, ip_address or "unknown")
     return TokenResponse(
         access_token=token,
         token_type="bearer",
@@ -107,18 +107,45 @@ async def login(
 @router.post(
     "/logout",
     status_code=status.HTTP_204_NO_CONTENT,
-    summary="Invalidate the current session (client-side token drop)",
+    summary="Record logout for the current session",
     response_model=None,
 )
-async def logout(current_user: CurrentUser) -> None:
-    """
-    Logout endpoint.
-
-    Because we use stateless JWTs the server instructs the client to
-    discard the token.  For full revocation a token-blocklist approach
-    (stored in Redis) would be added in a later phase.
-    """
-    logger.info("User %s logged out", current_user.email)
+async def logout(
+    current_user: CurrentUser,
+    request: Request,
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> None:
+    """Append a typed LOGOUT audit event; token revocation is handled separately."""
+    audit_repo = AuditRepository(db)
+    timestamp = datetime.now(UTC)
+    previous = await audit_repo.get_latest_event()
+    previous_hash = previous.event_hash if previous else None
+    action = f"User {current_user.id} logged out"
+    event_hash = compute_event_hash(
+        event_type=AuditEventType.LOGOUT.value,
+        action_description=action,
+        user_id=str(current_user.id),
+        case_id=None,
+        previous_hash=previous_hash,
+        timestamp=timestamp.isoformat(),
+    )
+    await audit_repo.append_event(
+        AuditEventCreate(
+            user_id=current_user.id,
+            case_id=None,
+            evidence_id=None,
+            event_type=AuditEventType.LOGOUT,
+            action_description=action,
+            ip_address=_request_ip(request),
+            user_agent=request.headers.get("user-agent"),
+            previous_state_hash=previous_hash,
+            event_hash=event_hash,
+            payload_delta={"action": "LOGOUT"},
+            timestamp=timestamp,
+        )
+    )
+    await db.commit()
+    logger.info("User %s logged out", current_user.id)
 
 
 @router.get(
