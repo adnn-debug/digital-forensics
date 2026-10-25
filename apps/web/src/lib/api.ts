@@ -187,6 +187,17 @@ export interface VideoKeyframeResult {
   [key: string]: any;
 }
 
+export interface PublicReportVerification {
+  report_number: string;
+  title: string;
+  created_at: string;
+  expected_sha256: string;
+  actual_sha256: string | null;
+  file_size_bytes: number;
+  integrity_valid: boolean;
+  message: string;
+}
+
 export interface ReportRead {
   id: string;
   case_id: string;
@@ -493,4 +504,10 @@ export async function generateCourtroomReport(
 
 export function getReportDownloadUrl(caseId: string, reportId: string): string {
   return `${API_BASE}/cases/${encodeURIComponent(caseId)}/reports/${encodeURIComponent(reportId)}/download`;
+}
+
+
+export async function verifyPublicReport(token: string): Promise<PublicReportVerification> {
+  const query = new URLSearchParams({ token });
+  return apiRequest<PublicReportVerification>(`/reports/verify?${query.toString()}`);
 }
