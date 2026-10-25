@@ -228,7 +228,15 @@ class ReportService:
             evidence_items=report_evidence,
             audit_events=report_audits,
             analyses=report_analyses,
-            verification_url=f"http://localhost:3000/reports/verify?case={case.case_number}&report={report_number}",
+            examiner_certification=payload.examiner_certification,
+            jurisdiction=payload.jurisdiction,
+            court_name=payload.court_name,
+            docket_number=payload.docket_number,
+            classification_marking=payload.classification_marking,
+            verification_url=(
+                f"{self.settings.FRONTEND_URL.rstrip('/')}/reports/verify"
+                f"?case={case.case_number}&report={report_number}"
+            ),
         )
 
         builder = CourtroomReportBuilder()
@@ -251,6 +259,11 @@ class ReportService:
             case_id=case_id,
             report_number=report_number,
             title=payload.title,
+            examiner_certification=payload.examiner_certification,
+            jurisdiction=payload.jurisdiction,
+            court_name=payload.court_name,
+            docket_number=payload.docket_number,
+            classification_marking=payload.classification_marking,
             generated_by_id=current_user.id,
             storage_path=storage_key,
             file_hash_sha256=pdf_digests.sha256,
