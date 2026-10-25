@@ -4,7 +4,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -82,6 +82,18 @@ class Settings(BaseSettings):
         default=30,
         description="Strict execution timeout in seconds for forensic CLI subprocesses",
     )
+
+    @model_validator(mode="after")
+    def validate_production_security(self) -> "Settings":
+        """Reject development credentials and debug mode in production."""
+        if self.ENVIRONMENT == "production":
+            if self.DEBUG:
+                raise ValueError("DEBUG must be false in production.")
+            if len(self.SECRET_KEY) < 32 or self.SECRET_KEY.startswith("ps05-insecure"):
+                raise ValueError("Configure a unique random SECRET_KEY of at least 32 characters.")
+            if "forensic_secure_pass_2026" in self.DATABASE_URL:
+                raise ValueError("Configure a unique database password before production.")
+        return self
 
     @field_validator(
         "STORAGE_BASE_PATH",
