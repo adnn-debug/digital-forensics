@@ -52,6 +52,7 @@ class ReportRepository(BaseRepository[Report]):
             court_name=payload.court_name,
             docket_number=payload.docket_number,
             classification_marking=payload.classification_marking,
+            verification_token=payload.verification_token,
             generated_by_id=payload.generated_by_id,
             storage_path=payload.storage_path,
             file_hash_sha256=payload.file_hash_sha256.lower(),
