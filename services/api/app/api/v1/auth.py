@@ -108,7 +108,7 @@ async def login(
 
     token = create_access_token(subject=user.id, role=user.role)
     timestamp = datetime.now(UTC)
-    previous = await audit_repo.get_latest_event()
+    previous = await audit_repo.get_latest_auth_event()
     previous_hash = previous.event_hash if previous else None
     ip_address = _request_ip(request)
     action = f"User {user.id} authenticated successfully"
