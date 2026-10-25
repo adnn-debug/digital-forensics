@@ -21,7 +21,8 @@
 | **Phase 6: Courtroom PDF Report Engine** | 2 | 0 | 2 | 0 | 0 | 0 |
 | **Phase 7: Next.js Forensic Dashboard** | 3 | 0 | 3 | 0 | 0 | 0 |
 | **Phase 8: System Hardening & Acceptance** | 2 | 0 | 2 | 0 | 0 | 0 |
-| **Total** | **21** | **0** | **21** | **0** | **0** | **0** |
+| **Phase 9: Production Deployment & Acceptance** | 4 | 0 | 0 | 0 | 1 | 3 |
+| **Total** | **25** | **0** | **21** | **0** | **1** | **3** |
 
 ---
 
@@ -103,3 +104,15 @@
 | :--- | :--- | :---: | :--- | :--- | :--- |
 | **TASK-8.1** | Automated bit-flip tamper simulation and immediate detection acceptance test | **Completed** | `services/api/tests/integration/test_tamper_detection.py`, `services/api/tests/test_evidence_intake.py` | All previous | Bit-flip simulations on disk trigger audit alerts and invalidate verification |
 | **TASK-8.2** | Security audit (path traversal, subprocess injection, DoS protection) | **Completed** | `services/api/tests/unit/test_forensic_adapters.py`, `services/api/tests/test_storage.py` | All previous | Subprocess parameter injection mitigations, path traversal mitigations, and file validation verified |
+
+
+---
+
+### Phase 9: Production Deployment & Acceptance
+
+| Task ID | Task Description | Status | Related Files | Dependencies | Verification Evidence / Blocker |
+| :--- | :--- | :---: | :--- | :--- | :--- |
+| **TASK-9.1** | Obtain a trustworthy green CI run for the exact release commit | **Blocked** | `.github/workflows/ci.yml`, tests | Actions must execute jobs | GitHub currently reports failed workflow runs with zero jobs; no reliable suite result is available |
+| **TASK-9.2** | Choose and implement durable production evidence storage shared by API and worker | **Blocked** | `services/api/app/storage/*`, `docs/DEPLOYMENT_READINESS.md` | Hosting topology decision | Current adapter is local filesystem; production cannot use ephemeral container storage, and separate services must share the same durable namespace |
+| **TASK-9.3** | Select hosting target, provision secrets/DB/Redis, and deploy over HTTPS | **Planned** | `docker-compose.yml`, deployment configuration | Hosting target and storage strategy | No verified public deployment URL or production configuration is recorded in this branch |
+| **TASK-9.4** | Run end-to-end acceptance on the deployed server, including tamper detection and QR verification | **Blocked** | API, web UI, worker, reports | TASK-9.1 through TASK-9.3 | No deployment smoke test has been run; require intact and tampered file cases, worker execution, health/readiness, and backup/restore checks |
