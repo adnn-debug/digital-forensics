@@ -1,0 +1,115 @@
+version: "3.8"
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: ps05_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-forensic_admin}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-forensic_secure_pass_2026}
+      POSTGRES_DB: ${POSTGRES_DB:-ps05_evidence_db}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-forensic_admin} -d ${POSTGRES_DB:-ps05_evidence_db}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - ps05_network
+
+  redis:
+    image: redis:7-alpine
+    container_name: ps05_redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - ps05_network
+
+  api:
+    build:
+      context: ./services/api
+      dockerfile: Dockerfile
+    container_name: ps05_api
+    restart: unless-stopped
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+    environment:
+      - ENVIRONMENT=development
+      - DEBUG=true
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-forensic_admin}:${POSTGRES_PASSWORD:-forensic_secure_pass_2026}@db:5432/${POSTGRES_DB:-ps05_evidence_db}
+      - REDIS_URL=redis://redis:6379/0
+      - STORAGE_BASE_PATH=/app/storage
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./services/api:/app
+      - ./storage:/app/storage
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - ps05_network
+
+  worker:
+    build:
+      context: ./services/api
+      dockerfile: Dockerfile
+    container_name: ps05_worker
+    restart: unless-stopped
+    command: ["python", "-m", "app.worker"]
+    environment:
+      - ENVIRONMENT=development
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-forensic_admin}:${POSTGRES_PASSWORD:-forensic_secure_pass_2026}@db:5432/${POSTGRES_DB:-ps05_evidence_db}
+      - REDIS_URL=redis://redis:6379/0
+      - STORAGE_BASE_PATH=/app/storage
+    volumes:
+      - ./services/api:/app
+      - ./storage:/app/storage
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - ps05_network
+
+  web:
+    build:
+      context: ./apps/web
+      dockerfile: Dockerfile
+    container_name: ps05_web
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:8000
+    volumes:
+      - ./apps/web:/app
+      - /app/node_modules
+      - /app/.next
+    depends_on:
+      - api
+    networks:
+      - ps05_network
+
+volumes:
+  postgres_data:
+  redis_data:
+
+networks:
+  ps05_network:
+    driver: bridge
