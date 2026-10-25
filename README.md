@@ -1,14 +1,14 @@
 # PS-05 Digital Evidence Authenticity & Integrity Verification Platform
 
 > **System Classification:** High-Integrity Digital Forensics & Chain-of-Custody Verification  
-> **Compliance Standards:** ISO/IEC 27037, ISO/IEC 27042, NIST SP 800-86, Federal Rules of Evidence (FRE 901/902)  
-> **Status:** Phase 2 Domain Entities & Audit Immutability Verified (Ready for Phase 3 Ingestion Engine)
+ > **Design References:** ISO/IEC 27037, ISO/IEC 27042, NIST SP 800-86, Federal Rules of Evidence (FRE 901/902) (references only; no compliance or admissibility certification is claimed)  
+ > **Status:** Hackathon prototype under security hardening; full CI, deployment, recovery, and forensic validation are still pending
 
 ---
 
 ### Architectural Overview
 
-The **PS-05 Platform** is an enterprise-grade digital forensics platform engineered to verify the authenticity and integrity of digital media evidence (image, audio, and video).
+The **PS-05 Platform** is a hackathon prototype for digital evidence intake, cryptographic integrity checks, metadata extraction, media analysis, audit logging, and report generation for image, audio, and video evidence. Automated analysis results are indicators for examiner review, not a definitive authenticity verdict. This repository has not been independently validated for production law-enforcement use or legal admissibility.
 
 ```
 digital-forensics/
@@ -91,6 +91,10 @@ npm run dev
 ```
 
 ---
+
+### Public report integrity verification
+
+Generated report PDFs include a tokenized QR URL that opens `/reports/verify?token=...`. The verification page re-hashes the archived PDF and compares the calculated SHA-256 with the hash recorded at generation. A match confirms only that the archived PDF bytes match that stored baseline; it does not prove the truth of the report contents, the integrity of every source evidence item, or legal admissibility.
 
 ### Health & Readiness Endpoints
 
