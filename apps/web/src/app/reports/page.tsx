@@ -24,7 +24,7 @@ import {
   listCases,
   listCaseReports,
   generateCourtroomReport,
-  getReportDownloadUrl,
+  downloadCourtroomReport,
   CaseItem,
   ReportRead,
 } from "@/lib/api";
@@ -153,6 +153,15 @@ function GenerateModal({
 }
 
 function ReportCard({ report, caseId }: { report: ReportRead; caseId: string }) {
+  const [downloadError, setDownloadError] = useState<string | null>(null);
+  const handleDownload = async () => {
+    setDownloadError(null);
+    try {
+      await downloadCourtroomReport(caseId, report.id, `${report.report_number}.pdf`);
+    } catch (err) {
+      setDownloadError(err instanceof Error ? err.message : "Report download failed.");
+    }
+  };
   const formatBytes = (n: number) => {
     if (n < 1024) return `${n} B`;
     if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
@@ -180,11 +189,12 @@ function ReportCard({ report, caseId }: { report: ReportRead; caseId: string }) 
             </div>
           </div>
         </div>
-        <a href={getReportDownloadUrl(caseId, report.id)} download
+        <button type="button" onClick={() => void handleDownload()}
           className="shrink-0 inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-integrity-teal text-forensic-950 font-semibold text-xs hover:bg-integrity-teal/90 transition-all shadow">
           <Download className="w-3.5 h-3.5" /><span>Download PDF</span>
-        </a>
+        </button>
       </div>
+      {downloadError && <p role="alert" className="mb-3 text-xs text-rose-400">{downloadError}</p>}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-[11px] font-mono text-forensic-400">
         <div className="flex items-center space-x-1.5">
           <Scale className="w-3.5 h-3.5 text-forensic-500 shrink-0" />
