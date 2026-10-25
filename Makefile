@@ -78,8 +78,9 @@ down:
 .PHONY: reset-data
 reset-data:
 	@echo "WARNING: This deletes PostgreSQL and Redis Compose volumes."
-	@read -r -p "Type DELETE-DATA to continue: " confirm; \
-	if [ "$$confirm" = "DELETE-DATA" ]; then \
+	@printf "Type DELETE-DATA to continue: "; \
+	read -r confirm; \
+	if [ "$confirm" = "DELETE-DATA" ]; then \
 		$(DOCKER_COMPOSE) down -v; \
 	else \
 		echo "Cancelled; persistent data was preserved."; \
