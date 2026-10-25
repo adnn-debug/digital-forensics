@@ -3,7 +3,7 @@
 import io
 from pathlib import Path
 from typing import Any, cast
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from fastapi import UploadFile
 import httpx
@@ -175,7 +175,7 @@ async def test_public_report_verification_detects_archived_pdf_tampering(
         headers=report_test_context["headers"],
     )
     assert response.status_code == 201, response.text
-    report_id = response.json()["id"]
+    report_id = UUID(response.json()["id"])
     report = await test_db_session.get(Report, report_id)
     assert report is not None
     assert report.verification_token
@@ -205,5 +205,5 @@ async def test_public_report_verification_detects_archived_pdf_tampering(
         archived_path.write_bytes(original)
         archived_path.chmod(0o400)
 
-    missing = await async_client.get("/api/v1/reports/verify?token=" + "a" * 32)
+    missing = await async_client.get("/api/v1/reports/verify?token=" + "0" * 32)
     assert missing.status_code == 404
