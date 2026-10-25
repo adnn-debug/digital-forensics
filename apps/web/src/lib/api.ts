@@ -9,6 +9,37 @@
 const API_BASE = "/api/v1";
 const TOKEN_STORAGE_KEY = "ps05_auth_token";
 
+export interface UserProfile {
+  id: string;
+  email: string;
+  full_name: string;
+  role: string;
+  is_active: boolean;
+  created_at: string;
+}
+
+export interface SystemHealth {
+  status: string;
+  service: string;
+  version: string;
+  environment: string;
+  timestamp: string;
+}
+
+export interface SystemReadiness {
+  status: string;
+  environment: string;
+  timestamp: string;
+  subsystems: {
+    database: { status: string; latency_ms?: number; error?: string };
+    redis: { status: string; latency_ms?: number; error?: string };
+    storage: {
+      status: string;
+      directories: Record<string, { status: string }>;
+    };
+  };
+}
+
 export interface PaginatedResponse<T> {
   items: T[];
   total: number;
@@ -278,12 +309,13 @@ function mapReport(report: Omit<ReportRead, "sha256_hash" | "generated_at" | "ex
 }
 
 export async function login(email: string, password: string): Promise<void> {
-  const result = await apiRequest<{ access_token: string; user: unknown }>("/auth/login", {
+  const result = await apiRequest<{ access_token: string; user: UserProfile }>("/auth/login", {
     method: "POST",
     body: JSON.stringify({ email, password }),
   });
   if (typeof window !== "undefined") {
     window.localStorage.setItem(TOKEN_STORAGE_KEY, result.access_token);
+    window.localStorage.setItem("ps05_user_profile", JSON.stringify(result.user));
   }
 }
 
@@ -293,6 +325,7 @@ export async function logout(): Promise<void> {
   } finally {
     if (typeof window !== "undefined") {
       window.localStorage.removeItem(TOKEN_STORAGE_KEY);
+      window.localStorage.removeItem("ps05_user_profile");
     }
   }
 }
@@ -506,6 +539,37 @@ export function getReportDownloadUrl(caseId: string, reportId: string): string {
   return `${API_BASE}/cases/${encodeURIComponent(caseId)}/reports/${encodeURIComponent(reportId)}/download`;
 }
 
+
+export function getStoredUserProfile(): UserProfile | null {
+  if (typeof window === "undefined") return null;
+  const raw = window.localStorage.getItem("ps05_user_profile");
+  if (!raw) return null;
+  try {
+    const value = JSON.parse(raw) as Partial<UserProfile>;
+    if (
+      typeof value.id === "string" &&
+      typeof value.email === "string" &&
+      typeof value.full_name === "string" &&
+      typeof value.role === "string" &&
+      typeof value.is_active === "boolean" &&
+      typeof value.created_at === "string"
+    ) {
+      return value as UserProfile;
+    }
+  } catch {
+    // Clear malformed or stale client-side profile data.
+  }
+  window.localStorage.removeItem("ps05_user_profile");
+  return null;
+}
+
+export async function fetchHealth(): Promise<SystemHealth> {
+  return apiRequest<SystemHealth>("/health");
+}
+
+export async function fetchReadiness(): Promise<SystemReadiness> {
+  return apiRequest<SystemReadiness>("/ready");
+}
 
 export async function verifyPublicReport(token: string): Promise<PublicReportVerification> {
   const query = new URLSearchParams({ token });
