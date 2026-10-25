@@ -121,6 +121,7 @@ _CREDENTIALS_EXCEPTION = HTTPException(
     headers={"WWW-Authenticate": "Bearer"},
 )
 
+
 async def _ensure_token_not_revoked(payload: dict[str, Any]) -> None:
     """Reject revoked JWT IDs; fail closed if the revocation store is unavailable."""
     jti = payload.get("jti")
