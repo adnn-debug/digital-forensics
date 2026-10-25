@@ -18,6 +18,7 @@ from app.core.security import compute_event_hash
 from app.db.models.audit import AuditEvent, AuditEventType
 from app.db.models.evidence import EvidenceItem, HashVerification, VerificationTrigger
 from app.db.models.user import User
+from app.repositories.audit_repo import AuditRepository
 from app.repositories.case_repo import CaseRepository
 from app.schemas.evidence import HashVerificationResult
 from app.services.evidence_service import EvidenceService
@@ -124,12 +125,14 @@ class VerificationService:
             )
         )
 
+        latest_audit = await AuditRepository(self.db).get_latest_event_for_case(case.id)
+        previous_hash = latest_audit.event_hash if latest_audit else None
         event_hash = compute_event_hash(
             event_type=event_type,
             action_description=action_desc,
             user_id=str(current_user.id),
             case_id=str(case.id),
-            previous_hash=None,
+            previous_hash=previous_hash,
             timestamp=now.isoformat(),
         )
         audit_event = AuditEvent(
@@ -138,7 +141,7 @@ class VerificationService:
             user_id=current_user.id,
             event_type=event_type,
             action_description=action_desc,
-            previous_state_hash=None,
+            previous_state_hash=previous_hash,
             event_hash=event_hash,
             payload_delta={
                 "expected_sha256": expected_sha256,
