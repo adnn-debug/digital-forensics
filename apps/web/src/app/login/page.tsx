@@ -27,9 +27,9 @@ export default function LoginPage(): React.JSX.Element {
     }
   };
 
-  const setPreset = (presetEmail: string) => {
+  const setPreset = (presetEmail: string, presetPassword = "6767") => {
     setEmail(presetEmail);
-    setPassword("SecureEvidence1234!");
+    setPassword(presetPassword);
     setError(null);
   };
 
@@ -101,23 +101,16 @@ export default function LoginPage(): React.JSX.Element {
           </button>
         </form>
 
-        {/* Test credential helpers */}
+        {/* Credential quick-fill */}
         <div className="mt-8 pt-6 border-t border-forensic-800 text-xs">
-          <span className="text-forensic-400 block mb-2 font-mono">Quick Test Credentials:</span>
-          <div className="grid grid-cols-2 gap-2">
+          <span className="text-forensic-400 block mb-2 font-mono">Quick Fill — Investigator:</span>
+          <div className="grid grid-cols-1 gap-2">
             <button
               type="button"
-              onClick={() => setPreset("examiner@test.com")}
-              className="px-2.5 py-1.5 rounded bg-forensic-850 hover:bg-forensic-800 border border-forensic-700 text-forensic-300 text-left text-[11px] font-mono transition-colors"
+              onClick={() => setPreset("c1pher@ps05.local", "6767")}
+              className="px-2.5 py-1.5 rounded bg-forensic-850 hover:bg-forensic-800 border border-integrity-cyan/40 text-integrity-cyan text-left text-[11px] font-mono transition-colors"
             >
-              Examiner Profile
-            </button>
-            <button
-              type="button"
-              onClick={() => setPreset("admin@test.com")}
-              className="px-2.5 py-1.5 rounded bg-forensic-850 hover:bg-forensic-800 border border-forensic-700 text-forensic-300 text-left text-[11px] font-mono transition-colors"
-            >
-              Admin Profile
+              🔑 c1pher  ·  c1pher@ps05.local  /  6767
             </button>
           </div>
         </div>
