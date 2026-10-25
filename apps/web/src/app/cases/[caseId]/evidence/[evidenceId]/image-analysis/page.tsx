@@ -27,6 +27,7 @@ import {
   fetchEvidenceDetail,
   getEvidenceContentUrl,
   getArtifactContentUrl,
+  fetchAuthenticatedBlobUrl,
   createAnalysisJob,
   getAnalysisJob,
   getAnalysisHistory,
@@ -66,6 +67,8 @@ export default function ImageAnalysisResultsPage({ params }: PageProps): React.J
   // Comparison Visualizer state
   const [viewMode, setViewMode] = useState<"side-by-side" | "blend" | "original" | "heatmap">("side-by-side");
   const [blendOpacity, setBlendOpacity] = useState<number>(50);
+  const [originalBlobUrl, setOriginalBlobUrl] = useState<string>("");
+  const [heatmapBlobUrl, setHeatmapBlobUrl] = useState<string>("");
   const [copiedHash, setCopiedHash] = useState<boolean>(false);
 
   // Independent verification state
@@ -215,6 +218,40 @@ export default function ImageAnalysisResultsPage({ params }: PageProps): React.J
 
   const originalImageUrl = evidence ? getEvidenceContentUrl(caseId, evidenceId) : "";
   const heatmapImageUrl = heatmapArtifact ? getArtifactContentUrl(heatmapArtifact.id) : "";
+
+  useEffect(() => {
+    let cancelled = false;
+    const objectUrls: string[] = [];
+
+    const loadProtectedImage = async (
+      url: string,
+      setUrl: (value: string) => void,
+    ): Promise<void> => {
+      if (!url) {
+        setUrl("");
+        return;
+      }
+      try {
+        const objectUrl = await fetchAuthenticatedBlobUrl(url);
+        if (cancelled) {
+          URL.revokeObjectURL(objectUrl);
+          return;
+        }
+        objectUrls.push(objectUrl);
+        setUrl(objectUrl);
+      } catch {
+        if (!cancelled) setUrl("");
+      }
+    };
+
+    void loadProtectedImage(originalImageUrl, setOriginalBlobUrl);
+    void loadProtectedImage(heatmapImageUrl, setHeatmapBlobUrl);
+
+    return () => {
+      cancelled = true;
+      objectUrls.forEach((url) => URL.revokeObjectURL(url));
+    };
+  }, [originalImageUrl, heatmapImageUrl]);
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col">
@@ -617,9 +654,9 @@ export default function ImageAnalysisResultsPage({ params }: PageProps): React.J
                     <span>Format: {imageProps?.format || "JPEG"}</span>
                   </div>
                   <div className="aspect-video w-full rounded-xl bg-slate-900 border border-slate-800 flex items-center justify-center overflow-hidden relative group">
-                    {originalImageUrl ? (
+                    {originalBlobUrl ? (
                       <img
-                        src={originalImageUrl}
+                        src={originalBlobUrl}
                         alt="Original evidentiary media"
                         className="max-h-[360px] max-w-full object-contain"
                       />
@@ -639,9 +676,9 @@ export default function ImageAnalysisResultsPage({ params }: PageProps): React.J
                     <span>Q={elaResult?.recompression_quality || 95} / Scale={elaResult?.amplification_scale || 15}x</span>
                   </div>
                   <div className="aspect-video w-full rounded-xl bg-slate-900 border border-slate-800 flex items-center justify-center overflow-hidden relative">
-                    {heatmapImageUrl ? (
+                    {heatmapBlobUrl ? (
                       <img
-                        src={heatmapImageUrl}
+                        src={heatmapBlobUrl}
                         alt="ELA Heatmap Artifact"
                         className="max-h-[360px] max-w-full object-contain"
                       />
@@ -663,14 +700,14 @@ export default function ImageAnalysisResultsPage({ params }: PageProps): React.J
             {/* View Mode: Blend Overlay */}
             {viewMode === "blend" && heatmapArtifact && (
               <div className="relative w-full max-h-[500px] flex items-center justify-center">
-                {originalImageUrl && (
+                {originalBlobUrl && (
                   <img
                     src={originalImageUrl}
                     alt="Original layer"
                     className="max-h-[480px] max-w-full object-contain rounded-xl"
                   />
                 )}
-                {heatmapImageUrl && (
+                {heatmapBlobUrl && (
                   <img
                     src={heatmapImageUrl}
                     alt="Heatmap overlay layer"
@@ -682,7 +719,7 @@ export default function ImageAnalysisResultsPage({ params }: PageProps): React.J
             )}
 
             {/* View Mode: Original Only */}
-            {viewMode === "original" && originalImageUrl && (
+            {viewMode === "original" && originalBlobUrl && (
               <div className="w-full flex items-center justify-center">
                 <img
                   src={originalImageUrl}
@@ -693,7 +730,7 @@ export default function ImageAnalysisResultsPage({ params }: PageProps): React.J
             )}
 
             {/* View Mode: Heatmap Only */}
-            {viewMode === "heatmap" && heatmapImageUrl && (
+            {viewMode === "heatmap" && heatmapBlobUrl && (
               <div className="w-full flex items-center justify-center">
                 <img
                   src={heatmapImageUrl}
@@ -714,7 +751,7 @@ export default function ImageAnalysisResultsPage({ params }: PageProps): React.J
                 <span className="text-cyan-400">{heatmapArtifact.hash_sha256.slice(0, 16)}...</span>
               </div>
               <a
-                href={heatmapImageUrl}
+                href={heatmapBlobUrl}
                 download={heatmapArtifact.file_name}
                 className="flex items-center gap-1.5 px-3 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 transition-colors"
               >
