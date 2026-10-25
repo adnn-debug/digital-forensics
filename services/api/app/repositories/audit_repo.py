@@ -7,7 +7,7 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models.audit import AuditEvent
+from app.db.models.audit import AuditEvent, AuditEventType
 from app.repositories.base import BaseRepository
 from app.schemas.audit import AuditEventCreate
 
@@ -32,6 +32,17 @@ class AuditRepository(BaseRepository[AuditEvent]):
     async def get_latest_event(self) -> AuditEvent | None:
         """Retrieve the most recent event across the audit log."""
         stmt = select(AuditEvent).order_by(AuditEvent.timestamp.desc(), AuditEvent.id.desc()).limit(1)
+        result = await self.session.execute(stmt)
+        return result.scalar_one_or_none()
+
+    async def get_latest_auth_event(self) -> AuditEvent | None:
+        """Retrieve the latest LOGIN/LOGOUT event in the separate authentication audit chain."""
+        stmt = (
+            select(AuditEvent)
+            .where(AuditEvent.event_type.in_([AuditEventType.LOGIN.value, AuditEventType.LOGOUT.value]))
+            .order_by(AuditEvent.timestamp.desc(), AuditEvent.id.desc())
+            .limit(1)
+        )
         result = await self.session.execute(stmt)
         return result.scalar_one_or_none()
 
