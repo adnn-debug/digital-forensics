@@ -212,6 +212,7 @@ class ReportService:
         now_iso = now_dt.isoformat()
         rand_suffix = uuid4().hex[:6].upper()
         report_number = f"REP-{case.case_number}-{rand_suffix}"
+        verification_token = uuid4().hex
 
         # 5. Assemble Courtroom Data & Build PDF
         report_data = CourtroomReportData(
@@ -235,7 +236,7 @@ class ReportService:
             classification_marking=payload.classification_marking,
             verification_url=(
                 f"{self.settings.FRONTEND_URL.rstrip('/')}/reports/verify"
-                f"?case={case.case_number}&report={report_number}"
+                f"?token={verification_token}"
             ),
         )
 
@@ -264,6 +265,7 @@ class ReportService:
             court_name=payload.court_name,
             docket_number=payload.docket_number,
             classification_marking=payload.classification_marking,
+            verification_token=verification_token,
             generated_by_id=current_user.id,
             storage_path=storage_key,
             file_hash_sha256=pdf_digests.sha256,
