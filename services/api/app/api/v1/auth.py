@@ -13,6 +13,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import CurrentUser, get_db, get_redis_pool
+from app.core.config import get_settings
 from app.core.security import (
     ACCESS_TOKEN_EXPIRE_MINUTES,
     compute_event_hash,
@@ -20,7 +21,6 @@ from app.core.security import (
     decode_access_token,
     verify_password,
 )
-from app.core.config import get_settings
 from app.db.models.audit import AuditEventType
 from app.repositories.audit_repo import AuditRepository
 from app.repositories.user_repo import UserRepository
