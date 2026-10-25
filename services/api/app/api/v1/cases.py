@@ -96,6 +96,7 @@ async def _append_case_audit(
         previous_state_hash=previous_hash,
         event_hash=event_hash,
         payload_delta=delta,
+        timestamp=datetime.fromisoformat(ts),
     )
     await audit_repo.append_event(payload)
     return event_hash

@@ -18,6 +18,7 @@ from app.core.config import Settings, get_settings
 from app.core.exceptions import StorageException
 from app.core.security import compute_event_hash
 from app.db.models.audit import AuditEvent, AuditEventType
+from app.repositories.audit_repo import AuditRepository
 from app.db.models.evidence import EvidenceItem, MetadataExtract
 from app.forensics.base import ToolExecutionResult
 from app.forensics.exif_adapter import ExifToolAdapter
@@ -111,12 +112,14 @@ class MetadataExtractionService:
             f"using {tools_summary}."
         )
 
+        latest_audit = await AuditRepository(self.db).get_latest_event_for_case(evidence.case_id)
+        previous_hash = latest_audit.event_hash if latest_audit else None
         event_hash = compute_event_hash(
             event_type=AuditEventType.METADATA_EXTRACTED.value,
             action_description=action_desc,
             user_id=str(current_user_id) if current_user_id else "SYSTEM",
             case_id=str(evidence.case_id),
-            previous_hash=None,
+            previous_hash=previous_hash,
             timestamp=now.isoformat(),
         )
 
@@ -126,7 +129,7 @@ class MetadataExtractionService:
             user_id=current_user_id,
             event_type=AuditEventType.METADATA_EXTRACTED.value,
             action_description=action_desc,
-            previous_state_hash=None,
+            previous_state_hash=previous_hash,
             event_hash=event_hash,
             payload_delta={
                 "tools_executed": [

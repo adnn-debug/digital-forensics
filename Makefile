@@ -11,7 +11,6 @@ MYPY ?= ./.venv/bin/mypy
 NPM ?= npm
 DOCKER_COMPOSE ?= docker compose
 
-# Default target
 .DEFAULT_GOAL := help
 
 .PHONY: help
@@ -19,13 +18,14 @@ help:
 	@echo "PS-05 Digital Evidence Verification Platform"
 	@echo "---------------------------------------------"
 	@echo "Available commands:"
-	@echo "  make setup      - Install Python virtualenv, backend & frontend dependencies"
-	@echo "  make dev        - Start local development services (docker-compose)"
-	@echo "  make test       - Execute full test suite (backend unit/integration tests)"
-	@echo "  make lint       - Run ruff on Python and eslint on TypeScript"
-	@echo "  make typecheck  - Run strict mypy and TypeScript compiler checks"
-	@echo "  make migrate    - Run database migrations via Alembic"
-	@echo "  make down       - Tear down docker-compose containers and networks"
+	@echo "  make setup       - Install Python virtualenv, backend & frontend dependencies"
+	@echo "  make dev         - Start local development services (docker-compose)"
+	@echo "  make test        - Execute backend test suite"
+	@echo "  make lint        - Run Python and frontend linters"
+	@echo "  make typecheck   - Run mypy and TypeScript compiler checks"
+	@echo "  make migrate     - Run database migrations via Alembic"
+	@echo "  make down        - Stop containers and networks; preserve volumes"
+	@echo "  make reset-data  - DESTRUCTIVE: remove containers AND database/Redis volumes"
 
 .PHONY: setup
 setup:
@@ -72,5 +72,17 @@ migrate:
 
 .PHONY: down
 down:
-	@echo "==> Stopping Docker Compose services..."
-	@$(DOCKER_COMPOSE) down -v
+	@echo "==> Stopping Docker Compose services without deleting persistent data..."
+	@$(DOCKER_COMPOSE) down
+
+.PHONY: reset-data
+reset-data:
+	@echo "WARNING: This deletes PostgreSQL and Redis Compose volumes."
+	@printf "Type DELETE-DATA to continue: "; \
+	read -r confirm; \
+	if [ "$confirm" = "DELETE-DATA" ]; then \
+		$(DOCKER_COMPOSE) down -v; \
+	else \
+		echo "Cancelled; persistent data was preserved."; \
+		exit 1; \
+	fi

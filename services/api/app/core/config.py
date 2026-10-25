@@ -4,7 +4,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -82,6 +82,32 @@ class Settings(BaseSettings):
         default=30,
         description="Strict execution timeout in seconds for forensic CLI subprocesses",
     )
+
+    @model_validator(mode="after")
+    def validate_production_security(self) -> "Settings":
+        """Reject development credentials and unsafe local defaults in deployed environments."""
+        if self.ENVIRONMENT in ("staging", "production"):
+            if self.DEBUG:
+                raise ValueError("DEBUG must be false in staging and production.")
+            if (
+                len(self.SECRET_KEY) < 32
+                or self.SECRET_KEY.startswith("ps05-insecure")
+                or "CHANGE_ME" in self.SECRET_KEY
+            ):
+                raise ValueError("Configure a unique random SECRET_KEY of at least 32 characters.")
+            if (
+                "forensic_secure_pass_2026" in self.DATABASE_URL
+                or "CHANGE_ME" in self.DATABASE_URL
+                or self.DATABASE_URL.startswith("sqlite")
+            ):
+                raise ValueError("Configure a production database URL with a unique password.")
+            if "localhost" in self.DATABASE_URL or "127.0.0.1" in self.DATABASE_URL:
+                raise ValueError("A deployed environment must not use a localhost database.")
+            if "localhost" in self.REDIS_URL or "127.0.0.1" in self.REDIS_URL:
+                raise ValueError("A deployed environment must not use a localhost Redis instance.")
+            if not self.FRONTEND_URL.startswith("https://"):
+                raise ValueError("FRONTEND_URL must use HTTPS in staging and production.")
+        return self
 
     @field_validator(
         "STORAGE_BASE_PATH",

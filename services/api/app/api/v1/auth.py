@@ -2,18 +2,23 @@
 
 from __future__ import annotations
 
+import hashlib
 import logging
+import math
 from datetime import UTC, datetime
 from typing import Annotated, Any
 
+import redis.asyncio as aioredis
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import CurrentUser, get_db
+from app.api.deps import CurrentUser, get_db, get_redis_pool
+from app.core.config import get_settings
 from app.core.security import (
     ACCESS_TOKEN_EXPIRE_MINUTES,
     compute_event_hash,
     create_access_token,
+    decode_access_token,
     verify_password,
 )
 from app.db.models.audit import AuditEventType
@@ -28,6 +33,51 @@ logger = logging.getLogger("ps05.auth")
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
 
+def _request_ip(request: Request) -> str | None:
+    """Return the direct peer IP; do not trust spoofable X-Forwarded-For headers."""
+    return request.client.host if request.client else None
+
+
+async def _enforce_login_rate_limit(request: Request, email: str) -> None:
+    """Limit repeated login attempts by both source IP and normalized account."""
+    if get_settings().ENVIRONMENT == "testing":
+        return
+
+    ip = _request_ip(request) or "unknown"
+    ip_digest = hashlib.sha256(ip.encode("utf-8")).hexdigest()
+    email_digest = hashlib.sha256(email.lower().strip().encode("utf-8")).hexdigest()
+    client = aioredis.Redis(connection_pool=get_redis_pool())
+    try:
+        ip_key = f"ps05:login:ip:{ip_digest}"
+        account_key = f"ps05:login:account:{email_digest}"
+        # Increment both counters and assign their TTLs atomically so a Redis
+        # interruption cannot leave a counter permanently locked without expiry.
+        script = """
+        local ip_count = redis.call('INCR', KEYS[1])
+        if ip_count == 1 then redis.call('EXPIRE', KEYS[1], ARGV[1]) end
+        local account_count = redis.call('INCR', KEYS[2])
+        if account_count == 1 then redis.call('EXPIRE', KEYS[2], ARGV[1]) end
+        return {ip_count, account_count}
+        """
+        counts = await client.eval(script, 2, ip_key, account_key, 900)
+        ip_count, account_count = int(counts[0]), int(counts[1])
+    except Exception as exc:
+        logger.error("Login rate-limit store unavailable (%s)", type(exc).__name__)
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={"code": "AUTH_SERVICE_UNAVAILABLE", "message": "Authentication is temporarily unavailable."},
+        ) from None
+    finally:
+        await client.close()
+
+    if ip_count > 60 or account_count > 10:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail={"code": "LOGIN_RATE_LIMITED", "message": "Too many login attempts. Try again later."},
+            headers={"Retry-After": "900"},
+        )
+
+
 @router.post(
     "/login",
     response_model=TokenResponse,
@@ -39,23 +89,17 @@ async def login(
     request: Request,
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> Any:
-    """
-    Exchange valid credentials for a signed JWT access token.
+    """Authenticate credentials and append a typed LOGIN audit event."""
+    normalized_email = payload.email.lower().strip()
+    await _enforce_login_rate_limit(request, normalized_email)
 
-    - Normalises the email before lookup.
-    - Uses bcrypt constant-time comparison — never leaks which field was wrong.
-    - Records a LOGIN audit event on success.
-    """
     user_repo = UserRepository(db)
     audit_repo = AuditRepository(db)
+    user = await user_repo.get_by_email(normalized_email)
 
-    # Normalise email before lookup to prevent case-confusion attacks
-    user = await user_repo.get_by_email(payload.email.lower().strip())
-
-    # Constant-time path: always verify even if user is None (prevents timing oracle)
+    # Verify even when the account does not exist to reduce timing-based account discovery.
     dummy_hash = "$2b$12$aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-    stored_hash = user.hashed_password if user else dummy_hash
-    password_ok = verify_password(payload.password, stored_hash)
+    password_ok = verify_password(payload.password, user.hashed_password if user else dummy_hash)
 
     if not user or not password_ok or not user.is_active:
         raise HTTPException(
@@ -68,34 +112,38 @@ async def login(
         )
 
     token = create_access_token(subject=user.id, role=user.role)
+    timestamp = datetime.now(UTC)
+    previous = await audit_repo.get_latest_auth_event()
+    previous_hash = previous.event_hash if previous else None
+    ip_address = _request_ip(request)
+    action = f"User {user.id} authenticated successfully"
 
-    # Append an immutable login audit event
-    ts = datetime.now(UTC).isoformat()
     event_hash = compute_event_hash(
-        event_type=AuditEventType.CASE_STATUS_CHANGED.value,  # closest generic type
-        action_description=f"User {user.email} authenticated successfully",
+        event_type=AuditEventType.LOGIN.value,
+        action_description=action,
         user_id=str(user.id),
         case_id=None,
-        previous_hash=None,
-        timestamp=ts,
+        previous_hash=previous_hash,
+        timestamp=timestamp.isoformat(),
     )
-    audit_event = AuditEventCreate(
-        user_id=user.id,
-        case_id=None,
-        evidence_id=None,
-        event_type=AuditEventType.CASE_STATUS_CHANGED,
-        action_description=f"User {user.email} authenticated from {request.client.host if request.client else 'unknown'}",
-        ip_address=request.client.host if request.client else None,
-        user_agent=request.headers.get("user-agent"),
-        previous_state_hash=None,
-        event_hash=event_hash,
-        payload_delta={"action": "LOGIN"},
+    await audit_repo.append_event(
+        AuditEventCreate(
+            user_id=user.id,
+            case_id=None,
+            evidence_id=None,
+            event_type=AuditEventType.LOGIN,
+            action_description=action,
+            ip_address=ip_address,
+            user_agent=request.headers.get("user-agent"),
+            previous_state_hash=previous_hash,
+            event_hash=event_hash,
+            payload_delta={"action": "LOGIN"},
+            timestamp=timestamp,
+        )
     )
-    await audit_repo.append_event(audit_event)
     await db.commit()
 
-    logger.info("User %s logged in from %s", user.email, request.client.host if request.client else "unknown")
-
+    logger.info("User %s logged in from %s", user.id, ip_address or "unknown")
     return TokenResponse(
         access_token=token,
         token_type="bearer",
@@ -107,18 +155,77 @@ async def login(
 @router.post(
     "/logout",
     status_code=status.HTTP_204_NO_CONTENT,
-    summary="Invalidate the current session (client-side token drop)",
+    summary="Record logout for the current session",
     response_model=None,
 )
-async def logout(current_user: CurrentUser) -> None:
-    """
-    Logout endpoint.
+async def logout(
+    current_user: CurrentUser,
+    request: Request,
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> None:
+    """Revoke the presented JWT and append a typed LOGOUT audit event."""
+    settings = get_settings()
+    authorization = request.headers.get("authorization", "")
+    scheme, _, raw_token = authorization.partition(" ")
+    if scheme.lower() != "bearer" or not raw_token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={"code": "UNAUTHENTICATED", "message": "Bearer token is required."},
+        )
 
-    Because we use stateless JWTs the server instructs the client to
-    discard the token.  For full revocation a token-blocklist approach
-    (stored in Redis) would be added in a later phase.
-    """
-    logger.info("User %s logged out", current_user.email)
+    token_payload = decode_access_token(raw_token)
+    jti = token_payload.get("jti")
+    expires_at = token_payload.get("exp")
+    if settings.ENVIRONMENT != "testing":
+        if not jti or not isinstance(expires_at, (int, float)):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail={"code": "INVALID_TOKEN", "message": "This session cannot be revoked safely."},
+            )
+        ttl = max(1, math.ceil(float(expires_at) - datetime.now(UTC).timestamp()))
+        redis_client = aioredis.Redis(connection_pool=get_redis_pool())
+        try:
+            await redis_client.set(f"ps05:revoked:{jti}", "1", ex=ttl)
+        except Exception as exc:
+            logger.error("Session revocation store unavailable (%s)", type(exc).__name__)
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail={"code": "AUTH_SERVICE_UNAVAILABLE", "message": "Logout could not be completed safely."},
+            ) from None
+        finally:
+            await redis_client.close()
+
+    audit_repo = AuditRepository(db)
+    timestamp = datetime.now(UTC)
+    # LOGIN and LOGOUT intentionally form their own authentication audit chain.
+    previous = await audit_repo.get_latest_auth_event()
+    previous_hash = previous.event_hash if previous else None
+    action = f"User {current_user.id} logged out"
+    event_hash = compute_event_hash(
+        event_type=AuditEventType.LOGOUT.value,
+        action_description=action,
+        user_id=str(current_user.id),
+        case_id=None,
+        previous_hash=previous_hash,
+        timestamp=timestamp.isoformat(),
+    )
+    await audit_repo.append_event(
+        AuditEventCreate(
+            user_id=current_user.id,
+            case_id=None,
+            evidence_id=None,
+            event_type=AuditEventType.LOGOUT,
+            action_description=action,
+            ip_address=_request_ip(request),
+            user_agent=request.headers.get("user-agent"),
+            previous_state_hash=previous_hash,
+            event_hash=event_hash,
+            payload_delta={"action": "LOGOUT"},
+            timestamp=timestamp,
+        )
+    )
+    await db.commit()
+    logger.info("User %s logged out", current_user.id)
 
 
 @router.get(

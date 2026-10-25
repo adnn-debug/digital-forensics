@@ -122,6 +122,28 @@ _CREDENTIALS_EXCEPTION = HTTPException(
 )
 
 
+async def _ensure_token_not_revoked(payload: dict[str, Any]) -> None:
+    """Reject revoked JWT IDs; fail closed if the revocation store is unavailable."""
+    jti = payload.get("jti")
+    if not jti or get_settings().ENVIRONMENT == "testing":
+        return
+
+    client = aioredis.Redis(connection_pool=get_redis_pool())
+    try:
+        if await client.exists(f"ps05:revoked:{jti}"):
+            raise _CREDENTIALS_EXCEPTION
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error("Token revocation lookup unavailable (%s)", type(exc).__name__)
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={"code": "AUTH_SERVICE_UNAVAILABLE", "message": "Authentication is temporarily unavailable."},
+        ) from None
+    finally:
+        await client.close()
+
+
 async def get_current_user(
     credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(_bearer_scheme)],
     db: Annotated[AsyncSession, Depends(get_db)],
@@ -145,6 +167,8 @@ async def get_current_user(
             raise _CREDENTIALS_EXCEPTION
     except JWTError:
         raise _CREDENTIALS_EXCEPTION from None
+
+    await _ensure_token_not_revoked(payload)
 
     try:
         user_id = UUID(user_id_str)

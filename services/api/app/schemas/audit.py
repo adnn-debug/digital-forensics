@@ -27,7 +27,7 @@ class AuditEventBase(BaseModel):
 class AuditEventCreate(AuditEventBase):
     """Schema for appending an audit event."""
 
-    pass
+    timestamp: datetime | None = None
 
 
 class AuditEventRead(AuditEventBase):

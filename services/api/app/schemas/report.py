@@ -12,6 +12,11 @@ class ReportBase(BaseModel):
     case_id: UUID
     report_number: str = Field(min_length=1, max_length=64)
     title: str = Field(min_length=1, max_length=255)
+    examiner_certification: str | None = Field(default=None, max_length=255)
+    jurisdiction: str | None = Field(default=None, max_length=255)
+    court_name: str | None = Field(default=None, max_length=255)
+    docket_number: str | None = Field(default=None, max_length=128)
+    classification_marking: str | None = Field(default=None, max_length=128)
     generated_by_id: UUID | None = None
     storage_path: str = Field(min_length=1, max_length=512)
     file_hash_sha256: str = Field(min_length=64, max_length=64)
@@ -22,7 +27,7 @@ class ReportBase(BaseModel):
 class ReportCreate(ReportBase):
     """Schema for persisting report metadata."""
 
-    pass
+    verification_token: str | None = Field(default=None, max_length=64)
 
 
 class ReportRead(ReportBase):
@@ -42,3 +47,8 @@ class ReportGenerateRequest(BaseModel):
         max_length=255,
     )
     included_evidence_ids: list[UUID] | None = None
+    examiner_certification: str | None = Field(default=None, max_length=255)
+    jurisdiction: str | None = Field(default=None, max_length=255)
+    court_name: str | None = Field(default=None, max_length=255)
+    docket_number: str | None = Field(default=None, max_length=128)
+    classification_marking: str | None = Field(default=None, max_length=128)

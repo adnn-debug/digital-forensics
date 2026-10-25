@@ -6,7 +6,7 @@ import hashlib
 import logging
 from datetime import UTC, datetime, timedelta
 from typing import Any, cast
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import bcrypt
 from jose import jwt  # type: ignore[import-untyped]
@@ -63,6 +63,7 @@ def create_access_token(
     payload: dict[str, Any] = {
         "sub": str(subject),
         "role": role,
+        "jti": str(uuid4()),
         "iat": now,
         "exp": expire,
     }

@@ -7,10 +7,9 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-forensic_admin}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-forensic_secure_pass_2026}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env before starting}
       POSTGRES_DB: ${POSTGRES_DB:-ps05_evidence_db}
-    ports:
-      - "5432:5432"
+    # Keep database private to the Compose network. Use docker compose exec db psql ... for local administration.
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -26,8 +25,7 @@ services:
     container_name: ps05_redis
     restart: unless-stopped
     command: ["redis-server", "--appendonly", "yes"]
-    ports:
-      - "6379:6379"
+    # Keep Redis private to the Compose network; do not publish its unauthenticated port.
     volumes:
       - redis_data:/data
     healthcheck:
@@ -35,6 +33,24 @@ services:
       interval: 5s
       timeout: 3s
       retries: 5
+    networks:
+      - ps05_network
+
+  migrate:
+    build:
+      context: ./services/api
+      dockerfile: Dockerfile
+    container_name: ps05_migrate
+    restart: "no"
+    command: ["alembic", "upgrade", "head"]
+    environment:
+      - ENVIRONMENT=development
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-forensic_admin}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env before starting}@db:5432/${POSTGRES_DB:-ps05_evidence_db}
+    volumes:
+      - ./services/api:/app
+    depends_on:
+      db:
+        condition: service_healthy
     networks:
       - ps05_network
 
@@ -48,11 +64,18 @@ services:
     environment:
       - ENVIRONMENT=development
       - DEBUG=true
-      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-forensic_admin}:${POSTGRES_PASSWORD:-forensic_secure_pass_2026}@db:5432/${POSTGRES_DB:-ps05_evidence_db}
+      - SECRET_KEY=${SECRET_KEY:?Set SECRET_KEY in .env before starting}
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-forensic_admin}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env before starting}@db:5432/${POSTGRES_DB:-ps05_evidence_db}
       - REDIS_URL=redis://redis:6379/0
       - STORAGE_BASE_PATH=/app/storage
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8000/api/v1/ready >/dev/null || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+      start_period: 30s
     volumes:
       - ./services/api:/app
       - ./storage:/app/storage
@@ -61,6 +84,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     networks:
       - ps05_network
 
@@ -73,7 +98,8 @@ services:
     command: ["python", "-m", "app.worker"]
     environment:
       - ENVIRONMENT=development
-      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-forensic_admin}:${POSTGRES_PASSWORD:-forensic_secure_pass_2026}@db:5432/${POSTGRES_DB:-ps05_evidence_db}
+      - SECRET_KEY=${SECRET_KEY:?Set SECRET_KEY in .env before starting}
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-forensic_admin}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env before starting}@db:5432/${POSTGRES_DB:-ps05_evidence_db}
       - REDIS_URL=redis://redis:6379/0
       - STORAGE_BASE_PATH=/app/storage
     volumes:
@@ -84,6 +110,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     networks:
       - ps05_network
 
@@ -91,18 +119,23 @@ services:
     build:
       context: ./apps/web
       dockerfile: Dockerfile
+      args:
+        INTERNAL_API_URL: http://api:8000
     container_name: ps05_web
     restart: unless-stopped
+    # Source and .next are bind-mounted for development, so run Next.js in dev mode.
+    command: ["npm", "run", "dev"]
     ports:
-      - "3000:3000"
+      - "127.0.0.1:3000:3000"
     environment:
-      - NEXT_PUBLIC_API_URL=http://localhost:8000
+      - INTERNAL_API_URL=http://api:8000
     volumes:
       - ./apps/web:/app
       - /app/node_modules
       - /app/.next
     depends_on:
-      - api
+      api:
+        condition: service_healthy
     networks:
       - ps05_network
 

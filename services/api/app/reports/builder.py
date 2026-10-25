@@ -15,6 +15,7 @@ from __future__ import annotations
 import io
 import logging
 from dataclasses import dataclass, field
+from xml.sax.saxutils import escape
 from typing import Any
 
 from reportlab.lib import colors
@@ -104,6 +105,11 @@ class CourtroomReportData:
     evidence_items: list[ReportEvidenceItemData]
     audit_events: list[ReportAuditEventData]
     analyses: list[ReportAnalysisData]
+    examiner_certification: str | None = None
+    jurisdiction: str | None = None
+    court_name: str | None = None
+    docket_number: str | None = None
+    classification_marking: str | None = None
     verification_url: str = "https://forensics.court.gov/verify"
 
 
@@ -235,6 +241,25 @@ class CourtroomReportBuilder:
             )
         )
         story.append(header_table)
+
+        report_context = [
+            ("Examiner certification reference", data.examiner_certification),
+            ("Jurisdiction", data.jurisdiction),
+            ("Court", data.court_name),
+            ("Docket number", data.docket_number),
+            ("Classification", data.classification_marking),
+        ]
+        present_context = [(label, value) for label, value in report_context if value]
+        if present_context:
+            story.append(Spacer(1, 5))
+            for label, value in present_context:
+                story.append(
+                    Paragraph(
+                        f"<b>{escape(label)}:</b> {escape(value or '')}",
+                        self.body_style,
+                    )
+                )
+
         story.append(Spacer(1, 6))
         story.append(HRFlowable(width="100%", thickness=1.5, color=colors.HexColor("#0f172a")))
         story.append(Spacer(1, 8))
@@ -406,7 +431,7 @@ class CourtroomReportBuilder:
         # -------------------------------------------------------------
         story.append(Paragraph("5. DOCUMENT INTEGRITY SEAL & VERIFICATION QR", self.section_heading))
 
-        qr_payload = f"{data.verification_url}?case={data.case_number}&report={data.report_number}"
+        qr_payload = data.verification_url
         qr_bytes = generate_qr_seal_bytes(qr_payload, box_size=3, border=1)
         qr_img = Image(io.BytesIO(qr_bytes), width=1.1 * inch, height=1.1 * inch)
 

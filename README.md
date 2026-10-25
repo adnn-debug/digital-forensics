@@ -1,14 +1,14 @@
 # PS-05 Digital Evidence Authenticity & Integrity Verification Platform
 
 > **System Classification:** High-Integrity Digital Forensics & Chain-of-Custody Verification  
-> **Compliance Standards:** ISO/IEC 27037, ISO/IEC 27042, NIST SP 800-86, Federal Rules of Evidence (FRE 901/902)  
-> **Status:** Phase 2 Domain Entities & Audit Immutability Verified (Ready for Phase 3 Ingestion Engine)
+> **Design References:** ISO/IEC 27037, ISO/IEC 27042, NIST SP 800-86, Federal Rules of Evidence (FRE 901/902) (references only; no compliance or admissibility certification is claimed)  
+> **Status:** Hackathon prototype under security hardening; full CI, deployment, recovery, and forensic validation are still pending
 
 ---
 
 ### Architectural Overview
 
-The **PS-05 Platform** is an enterprise-grade digital forensics platform engineered to verify the authenticity and integrity of digital media evidence (image, audio, and video).
+The **PS-05 Platform** is a hackathon prototype for digital evidence intake, cryptographic integrity checks, metadata extraction, media analysis, audit logging, and report generation for image, audio, and video evidence. Automated analysis results are indicators for examiner review, not a definitive authenticity verdict. This repository has not been independently validated for production law-enforcement use or legal admissibility.
 
 ```
 digital-forensics/
@@ -41,7 +41,27 @@ make setup
 .\run.ps1 setup
 ```
 
-#### 2. Run with Docker Compose
+#### 2. Configure secrets before starting
+
+Copy the template and replace both placeholders with unique values. Do not commit your local `.env` file.
+
+```bash
+# Linux/macOS/Git Bash
+cp .env.example .env
+
+# Windows PowerShell
+Copy-Item .env.example .env
+```
+
+Generate a strong API signing key with Python:
+
+```bash
+python -c "import secrets; print(secrets.token_hex(32))"
+```
+
+Use a generated random value for `SECRET_KEY`. Generate a second value with the same command for `POSTGRES_PASSWORD`, then copy that exact database password into `DATABASE_URL`. `token_hex(32)` produces URL-safe hexadecimal characters, avoiding connection-string parsing errors. Do not reuse the API signing key as the database password. The Compose configuration refuses to start without the required values. PostgreSQL and Redis are private to the Compose network; the web and API ports bind to localhost for local development.
+
+#### 3. Run with Docker Compose
 ```bash
 # Launch PostgreSQL, Redis, FastAPI Backend, Worker, and Next.js Frontend:
 docker compose up -d
@@ -50,7 +70,7 @@ docker compose up -d
 docker compose ps
 ```
 
-#### 3. Run Locally (Direct Development Mode)
+#### 4. Run Locally (Direct Development Mode)
 
 **Backend API:**
 ```bash
@@ -71,6 +91,14 @@ npm run dev
 ```
 
 ---
+
+### Deployment readiness
+
+See [docs/DEPLOYMENT_READINESS.md](docs/DEPLOYMENT_READINESS.md) for the current deployment blockers, required release gates, and smoke-test commands. The application is not considered production-ready until CI and a deployed end-to-end test pass.
+
+### Public report integrity verification
+
+Generated report PDFs include a tokenized QR URL that opens `/reports/verify?token=...`. The verification page re-hashes the archived PDF and compares the calculated SHA-256 with the hash recorded at generation. A match confirms only that the archived PDF bytes match that stored baseline; it does not prove the truth of the report contents, the integrity of every source evidence item, or legal admissibility.
 
 ### Health & Readiness Endpoints
 

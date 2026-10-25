@@ -20,15 +20,24 @@ export function NavBar(): React.JSX.Element {
   const pathname = usePathname();
   const router = useRouter();
   const [user, setUser] = useState<UserProfile | null>(null);
+  const [logoutError, setLogoutError] = useState<string | null>(null);
 
   useEffect(() => {
     setUser(getStoredUserProfile());
   }, [pathname]);
 
   const handleLogout = async () => {
-    await logout();
-    setUser(null);
-    router.push("/login");
+    setLogoutError(null);
+    try {
+      await logout();
+    } catch {
+      // The client token is cleared in logout's finally block, but the server
+      // may not have confirmed revocation. Make that distinction visible.
+      setLogoutError("Local session cleared, but server-side token revocation could not be confirmed.");
+    } finally {
+      setUser(null);
+      router.push("/login");
+    }
   };
 
   const navLinks = [
@@ -84,6 +93,11 @@ export function NavBar(): React.JSX.Element {
 
         {/* User Session Bar */}
         <div className="flex items-center space-x-3 text-xs">
+          {logoutError && (
+            <span role="alert" className="max-w-xs text-[11px] text-amber-300">
+              {logoutError}
+            </span>
+          )}
           {user ? (
             <div className="flex items-center space-x-3">
               <div className="flex items-center space-x-2 bg-forensic-850 px-2.5 py-1.5 rounded-md border border-forensic-700/60">

@@ -55,3 +55,22 @@ async def test_readiness_probe_unhealthy(async_client: AsyncClient) -> None:
         data = response.json()
         assert data["status"] == "NOT_READY"
         assert data["subsystems"]["database"]["status"] == "UNHEALTHY"
+
+
+
+@pytest.mark.asyncio
+async def test_readiness_does_not_disclose_dependency_errors(async_client: AsyncClient) -> None:
+    """Readiness output must not reveal connection strings, local paths, or exception details."""
+    secret_detail = "postgres://private-user:private-password@internal-db/private-db"
+    with (
+        patch("app.api.v1.health.check_db_connectivity", new_callable=AsyncMock) as mock_db,
+        patch("app.api.v1.health.check_redis_connectivity", new_callable=AsyncMock) as mock_redis,
+    ):
+        mock_db.return_value = {"status": "UNHEALTHY", "error": secret_detail}
+        mock_redis.return_value = {"status": "UNHEALTHY", "error": "redis://private-redis"}
+        response = await async_client.get("/api/v1/ready")
+
+    assert response.status_code == 503
+    assert secret_detail not in response.text
+    assert "private-redis" not in response.text
+    assert response.json()["subsystems"]["database"] == {"status": "UNHEALTHY"}

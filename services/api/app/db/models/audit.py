@@ -23,6 +23,8 @@ JSONType = JSON().with_variant(JSONB, "postgresql")
 class AuditEventType(str, enum.Enum):
     """Event classifications for chain of custody."""
 
+    LOGIN = "LOGIN"
+    LOGOUT = "LOGOUT"
     EVIDENCE_INGESTED = "EVIDENCE_INGESTED"
     HASH_VERIFIED = "HASH_VERIFIED"
     TAMPER_DETECTED = "TAMPER_DETECTED"
@@ -69,7 +71,6 @@ class AuditEvent(Base):
         nullable=False,
     )
 
-    # Relationships
     case: Mapped["Case | None"] = relationship("Case", back_populates="audit_events")
     evidence: Mapped["EvidenceItem | None"] = relationship(
         "EvidenceItem", back_populates="audit_events"

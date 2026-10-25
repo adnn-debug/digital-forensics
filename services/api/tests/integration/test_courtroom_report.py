@@ -3,17 +3,19 @@
 import io
 from pathlib import Path
 from typing import Any, cast
-from uuid import uuid4
+from uuid import UUID, uuid4
 
-from fastapi import UploadFile
 import httpx
 import pypdf
 import pytest
+from fastapi import UploadFile
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings
 from app.core.security import create_access_token
 from app.db.models.case import Case
+from app.db.models.report import Report
 from app.db.models.user import User, UserRole
 from app.services.evidence_service import EvidenceService
 from app.storage.local import LocalFilesystemStorageAdapter
@@ -149,3 +151,70 @@ async def test_generate_and_download_courtroom_report(
     assert "EVID-RPT-001" in extracted_text
     assert "intercepted_visual.gif" in extracted_text
     assert "CHAIN OF CUSTODY" in extracted_text
+
+
+@pytest.mark.asyncio
+async def test_public_report_verification_detects_archived_pdf_tampering(
+    async_client: httpx.AsyncClient,
+    report_test_context: dict[str, Any],
+    test_db_session: AsyncSession,
+    test_storage_adapter: LocalFilesystemStorageAdapter,
+) -> None:
+    """The public QR endpoint verifies the archived PDF hash and detects byte changes."""
+    case_id = report_test_context["case"].id
+    response = await async_client.post(
+        f"/api/v1/cases/{case_id}/reports/generate",
+        json={
+            "title": "Integrity Verification Regression Test",
+            "examiner_certification": "CFCE-TEST-001",
+            "jurisdiction": "Bihar, India",
+            "court_name": "Demo Forensic Review Court",
+            "docket_number": "DEMO-2026-001",
+            "classification_marking": "DEMO ONLY",
+        },
+        headers=report_test_context["headers"],
+    )
+    assert response.status_code == 201, response.text
+    report_id = UUID(response.json()["id"])
+    report = await test_db_session.get(Report, report_id)
+    assert report is not None
+    assert report.verification_token
+    assert report.jurisdiction == "Bihar, India"
+    assert report.court_name == "Demo Forensic Review Court"
+    assert report.docket_number == "DEMO-2026-001"
+
+    pdf_response = await async_client.get(
+        f"/api/v1/cases/{case_id}/reports/{report_id}/download",
+        headers=report_test_context["headers"],
+    )
+    assert pdf_response.status_code == 200, pdf_response.text
+    pdf_text = " ".join(
+        page.extract_text() or ""
+        for page in pypdf.PdfReader(io.BytesIO(pdf_response.content)).pages
+    )
+    assert report.verification_token in pdf_text
+
+    verify_url = f"/api/v1/reports/verify?token={report.verification_token}"
+    verified = await async_client.get(verify_url)
+    assert verified.status_code == 200, verified.text
+    assert verified.json()["integrity_valid"] is True
+    assert verified.json()["expected_sha256"] == report.file_hash_sha256
+    assert verified.json()["actual_sha256"] == report.file_hash_sha256
+
+    # Deliberately mutate the isolated test fixture's archived PDF. This is a
+    # regression test, not a production mutation; the verifier must flag it.
+    archived_path = test_storage_adapter.get_local_path_readonly(report.storage_path)
+    archived_path.chmod(0o600)
+    original = archived_path.read_bytes()
+    try:
+        archived_path.write_bytes(original + b"tampered")
+        tampered = await async_client.get(verify_url)
+        assert tampered.status_code == 200, tampered.text
+        assert tampered.json()["integrity_valid"] is False
+        assert tampered.json()["actual_sha256"] != report.file_hash_sha256
+    finally:
+        archived_path.write_bytes(original)
+        archived_path.chmod(0o400)
+
+    missing = await async_client.get("/api/v1/reports/verify?token=" + "0" * 32)
+    assert missing.status_code == 404

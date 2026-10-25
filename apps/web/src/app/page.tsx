@@ -80,7 +80,7 @@ export default function OperationalConsole(): React.JSX.Element {
           <div className="mt-4 pt-4 border-t border-forensic-800/80 text-xs text-forensic-500 font-mono">
             Last probe timestamp: <span className="text-forensic-300">{lastCheck}</span> &bull; API Target:{" "}
             <span className="text-integrity-cyan">
-              {process.env["NEXT_PUBLIC_API_URL"] || "http://localhost:8000"}
+              {"/api/v1 (same-origin proxy)"}
             </span>
           </div>
         )}
