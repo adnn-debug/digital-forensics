@@ -50,12 +50,17 @@ async def _enforce_login_rate_limit(request: Request, email: str) -> None:
     try:
         ip_key = f"ps05:login:ip:{ip_digest}"
         account_key = f"ps05:login:account:{email_digest}"
-        ip_count = await client.incr(ip_key)
-        account_count = await client.incr(account_key)
-        if ip_count == 1:
-            await client.expire(ip_key, 900)
-        if account_count == 1:
-            await client.expire(account_key, 900)
+        # Increment both counters and assign their TTLs atomically so a Redis
+        # interruption cannot leave a counter permanently locked without expiry.
+        script = """
+        local ip_count = redis.call('INCR', KEYS[1])
+        if ip_count == 1 then redis.call('EXPIRE', KEYS[1], ARGV[1]) end
+        local account_count = redis.call('INCR', KEYS[2])
+        if account_count == 1 then redis.call('EXPIRE', KEYS[2], ARGV[1]) end
+        return {ip_count, account_count}
+        """
+        counts = await client.eval(script, 2, ip_key, account_key, 900)
+        ip_count, account_count = int(counts[1]), int(counts[2])
     except Exception as exc:
         logger.error("Login rate-limit store unavailable (%s)", type(exc).__name__)
         raise HTTPException(
