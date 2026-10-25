@@ -339,6 +339,29 @@ export function getArtifactContentUrl(artifactId: string): string {
   return `${API_BASE}/analysis/artifacts/${encodeURIComponent(artifactId)}/content`;
 }
 
+export async function fetchAuthenticatedBlobUrl(url: string): Promise<string> {
+  const response = await fetch(url, { headers: authHeaders(), cache: "no-store" });
+  if (!response.ok) {
+    throw new Error(`Unable to retrieve protected file (${response.status}).`);
+  }
+  return URL.createObjectURL(await response.blob());
+}
+
+export async function downloadCourtroomReport(
+  caseId: string,
+  reportId: string,
+  filename: string,
+): Promise<void> {
+  const blobUrl = await fetchAuthenticatedBlobUrl(getReportDownloadUrl(caseId, reportId));
+  const link = document.createElement("a");
+  link.href = blobUrl;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
+}
+
 export async function uploadEvidenceWithProgress(
   caseId: string,
   file: File,
