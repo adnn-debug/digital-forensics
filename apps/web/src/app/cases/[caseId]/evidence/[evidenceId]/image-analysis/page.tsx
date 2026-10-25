@@ -702,14 +702,14 @@ export default function ImageAnalysisResultsPage({ params }: PageProps): React.J
               <div className="relative w-full max-h-[500px] flex items-center justify-center">
                 {originalBlobUrl && (
                   <img
-                    src={originalImageUrl}
+                    src={originalBlobUrl}
                     alt="Original layer"
                     className="max-h-[480px] max-w-full object-contain rounded-xl"
                   />
                 )}
                 {heatmapBlobUrl && (
                   <img
-                    src={heatmapImageUrl}
+                    src={heatmapBlobUrl}
                     alt="Heatmap overlay layer"
                     style={{ opacity: blendOpacity / 100 }}
                     className="absolute max-h-[480px] max-w-full object-contain rounded-xl transition-opacity pointer-events-none"
@@ -722,7 +722,7 @@ export default function ImageAnalysisResultsPage({ params }: PageProps): React.J
             {viewMode === "original" && originalBlobUrl && (
               <div className="w-full flex items-center justify-center">
                 <img
-                  src={originalImageUrl}
+                  src={originalBlobUrl}
                   alt="Original evidentiary media"
                   className="max-h-[500px] max-w-full object-contain rounded-xl"
                 />
@@ -733,7 +733,7 @@ export default function ImageAnalysisResultsPage({ params }: PageProps): React.J
             {viewMode === "heatmap" && heatmapBlobUrl && (
               <div className="w-full flex items-center justify-center">
                 <img
-                  src={heatmapImageUrl}
+                  src={heatmapBlobUrl}
                   alt="Heatmap artifact"
                   className="max-h-[500px] max-w-full object-contain rounded-xl"
                 />
