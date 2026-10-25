@@ -30,6 +30,7 @@ For a hosted deployment, **the API and worker must see the same durable storage 
 - Unique production SECRET_KEY; DEBUG=false; ENVIRONMENT=production; correct HTTPS FRONTEND_URL; secret values stored in the host's secret manager, never committed.
 - Durable evidence/artifact/report storage, access controls, retention policy, and tested recovery.
 - Non-root containers, resource limits, upload/request limits, rate limiting, dependency scanning, monitoring/alerts, and operational logs without sensitive evidence data.
+- The current browser client stores the bearer token in localStorage. Before handling real sensitive evidence, assess migrating to Secure/HttpOnly/SameSite cookies with CSRF protection, or complete a documented XSS/CSP threat review; CSP is a defense-in-depth control, not a substitute for that review.
 
 ### 4. Verify operational and forensic behavior
 
