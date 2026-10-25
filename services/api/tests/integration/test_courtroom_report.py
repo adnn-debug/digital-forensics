@@ -5,18 +5,18 @@ from pathlib import Path
 from typing import Any, cast
 from uuid import UUID, uuid4
 
-from fastapi import UploadFile
 import httpx
 import pypdf
 import pytest
+from fastapi import UploadFile
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings
 from app.core.security import create_access_token
 from app.db.models.case import Case
-from app.db.models.user import User, UserRole
 from app.db.models.report import Report
+from app.db.models.user import User, UserRole
 from app.services.evidence_service import EvidenceService
 from app.storage.local import LocalFilesystemStorageAdapter
 
