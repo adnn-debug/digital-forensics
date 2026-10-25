@@ -2,20 +2,25 @@
 
 from __future__ import annotations
 
+import hashlib
 import logging
+import math
 from datetime import UTC, datetime
 from typing import Annotated, Any
 
+import redis.asyncio as aioredis
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import CurrentUser, get_db
+from app.api.deps import CurrentUser, get_db, get_redis_pool
 from app.core.security import (
     ACCESS_TOKEN_EXPIRE_MINUTES,
     compute_event_hash,
     create_access_token,
+    decode_access_token,
     verify_password,
 )
+from app.core.config import get_settings
 from app.db.models.audit import AuditEventType
 from app.repositories.audit_repo import AuditRepository
 from app.repositories.user_repo import UserRepository
@@ -33,6 +38,41 @@ def _request_ip(request: Request) -> str | None:
     return request.client.host if request.client else None
 
 
+async def _enforce_login_rate_limit(request: Request, email: str) -> None:
+    """Limit repeated login attempts by both source IP and normalized account."""
+    if get_settings().ENVIRONMENT == "testing":
+        return
+
+    ip = _request_ip(request) or "unknown"
+    ip_digest = hashlib.sha256(ip.encode("utf-8")).hexdigest()
+    email_digest = hashlib.sha256(email.lower().strip().encode("utf-8")).hexdigest()
+    client = aioredis.Redis(connection_pool=get_redis_pool())
+    try:
+        ip_key = f"ps05:login:ip:{ip_digest}"
+        account_key = f"ps05:login:account:{email_digest}"
+        ip_count = await client.incr(ip_key)
+        account_count = await client.incr(account_key)
+        if ip_count == 1:
+            await client.expire(ip_key, 900)
+        if account_count == 1:
+            await client.expire(account_key, 900)
+    except Exception as exc:
+        logger.error("Login rate-limit store unavailable (%s)", type(exc).__name__)
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={"code": "AUTH_SERVICE_UNAVAILABLE", "message": "Authentication is temporarily unavailable."},
+        ) from None
+    finally:
+        await client.close()
+
+    if ip_count > 60 or account_count > 10:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail={"code": "LOGIN_RATE_LIMITED", "message": "Too many login attempts. Try again later."},
+            headers={"Retry-After": "900"},
+        )
+
+
 @router.post(
     "/login",
     response_model=TokenResponse,
@@ -45,9 +85,12 @@ async def login(
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> Any:
     """Authenticate credentials and append a typed LOGIN audit event."""
+    normalized_email = payload.email.lower().strip()
+    await _enforce_login_rate_limit(request, normalized_email)
+
     user_repo = UserRepository(db)
     audit_repo = AuditRepository(db)
-    user = await user_repo.get_by_email(payload.email.lower().strip())
+    user = await user_repo.get_by_email(normalized_email)
 
     # Verify even when the account does not exist to reduce timing-based account discovery.
     dummy_hash = "$2b$12$aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
@@ -115,7 +158,38 @@ async def logout(
     request: Request,
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> None:
-    """Append a typed LOGOUT audit event; token revocation is handled separately."""
+    """Revoke the presented JWT and append a typed LOGOUT audit event."""
+    settings = get_settings()
+    authorization = request.headers.get("authorization", "")
+    scheme, _, raw_token = authorization.partition(" ")
+    if scheme.lower() != "bearer" or not raw_token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={"code": "UNAUTHENTICATED", "message": "Bearer token is required."},
+        )
+
+    token_payload = decode_access_token(raw_token)
+    jti = token_payload.get("jti")
+    expires_at = token_payload.get("exp")
+    if settings.ENVIRONMENT != "testing":
+        if not jti or not isinstance(expires_at, (int, float)):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail={"code": "INVALID_TOKEN", "message": "This session cannot be revoked safely."},
+            )
+        ttl = max(1, math.ceil(float(expires_at) - datetime.now(UTC).timestamp()))
+        redis_client = aioredis.Redis(connection_pool=get_redis_pool())
+        try:
+            await redis_client.set(f"ps05:revoked:{jti}", "1", ex=ttl)
+        except Exception as exc:
+            logger.error("Session revocation store unavailable (%s)", type(exc).__name__)
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail={"code": "AUTH_SERVICE_UNAVAILABLE", "message": "Logout could not be completed safely."},
+            ) from None
+        finally:
+            await redis_client.close()
+
     audit_repo = AuditRepository(db)
     timestamp = datetime.now(UTC)
     previous = await audit_repo.get_latest_event()
