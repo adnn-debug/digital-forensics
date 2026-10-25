@@ -1,10 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type JSX } from "react";
 import { AlertTriangle, CheckCircle2, Loader2, ShieldCheck, XCircle } from "lucide-react";
 import { verifyPublicReport, PublicReportVerification } from "@/lib/api";
 
-export default function VerifyReportPage(): React.JSX.Element {
+export default function VerifyReportPage(): JSX.Element {
   const [token, setToken] = useState<string | null>(null);
   const [result, setResult] = useState<PublicReportVerification | null>(null);
   const [loading, setLoading] = useState(true);
