@@ -1,8 +1,8 @@
 # PS-05 Digital Evidence Authenticity & Integrity Verification Platform
 
 > **System Classification:** High-Integrity Digital Forensics & Chain-of-Custody Verification  
- > **Design References:** ISO/IEC 27037, ISO/IEC 27042, NIST SP 800-86, Federal Rules of Evidence (FRE 901/902) (references only; no compliance or admissibility certification is claimed)  
- > **Status:** Hackathon prototype under security hardening; full CI, deployment, recovery, and forensic validation are still pending
+> **Design References:** ISO/IEC 27037, ISO/IEC 27042, NIST SP 800-86, Federal Rules of Evidence (FRE 901/902) (references only; no compliance or admissibility certification is claimed)  
+> **Status:** Hackathon prototype under security hardening; full CI, deployment, recovery, and forensic validation are still pending
 
 ---
 
