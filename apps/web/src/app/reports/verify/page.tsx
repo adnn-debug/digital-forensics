@@ -1,19 +1,22 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useSearchParams } from "next/navigation";
 import { AlertTriangle, CheckCircle2, Loader2, ShieldCheck, XCircle } from "lucide-react";
 import { verifyPublicReport, PublicReportVerification } from "@/lib/api";
 
 export default function VerifyReportPage(): React.JSX.Element {
-  const searchParams = useSearchParams();
-  const token = searchParams.get("token") ?? "";
+  const [token, setToken] = useState<string | null>(null);
   const [result, setResult] = useState<PublicReportVerification | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    setToken(new URLSearchParams(window.location.search).get("token") ?? "");
+  }, []);
+
+  useEffect(() => {
     let active = true;
+    if (token === null) return () => { active = false; };
     if (!token) {
       setError("This verification link is missing its token. Scan the QR code printed on the original report.");
       setLoading(false);
