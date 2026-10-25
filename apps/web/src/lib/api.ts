@@ -260,7 +260,7 @@ function mapReport(report: Omit<ReportRead, "sha256_hash" | "generated_at" | "ex
     ...report,
     sha256_hash: report.file_hash_sha256,
     generated_at: report.created_at,
-    examiner_name: report.generated_by_id || "Not recorded",
+    examiner_name: report.generated_by_id ? `Examiner ID: ${report.generated_by_id}` : "Not recorded",
     evidence_count: report.included_evidence_ids?.length ?? 0,
     is_sealed: true,
   };
@@ -480,6 +480,11 @@ export async function generateCourtroomReport(
       body: JSON.stringify({
         title: payload.title,
         included_evidence_ids: payload.included_evidence_ids,
+        examiner_certification: payload.examiner_certification,
+        jurisdiction: payload.jurisdiction,
+        court_name: payload.court_name,
+        docket_number: payload.docket_number,
+        classification_marking: payload.classification_marking,
       }),
     },
   );
