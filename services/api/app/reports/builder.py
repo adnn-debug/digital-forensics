@@ -431,7 +431,7 @@ class CourtroomReportBuilder:
         # -------------------------------------------------------------
         story.append(Paragraph("5. DOCUMENT INTEGRITY SEAL & VERIFICATION QR", self.section_heading))
 
-        qr_payload = f"{data.verification_url}?case={data.case_number}&report={data.report_number}"
+        qr_payload = data.verification_url
         qr_bytes = generate_qr_seal_bytes(qr_payload, box_size=3, border=1)
         qr_img = Image(io.BytesIO(qr_bytes), width=1.1 * inch, height=1.1 * inch)
 
