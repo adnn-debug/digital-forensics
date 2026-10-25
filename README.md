@@ -92,6 +92,10 @@ npm run dev
 
 ---
 
+### Deployment readiness
+
+See [docs/DEPLOYMENT_READINESS.md](docs/DEPLOYMENT_READINESS.md) for the current deployment blockers, required release gates, and smoke-test commands. The application is not considered production-ready until CI and a deployed end-to-end test pass.
+
 ### Public report integrity verification
 
 Generated report PDFs include a tokenized QR URL that opens `/reports/verify?token=...`. The verification page re-hashes the archived PDF and compares the calculated SHA-256 with the hash recorded at generation. A match confirms only that the archived PDF bytes match that stored baseline; it does not prove the truth of the report contents, the integrity of every source evidence item, or legal admissibility.
