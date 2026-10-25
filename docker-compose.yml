@@ -36,6 +36,24 @@ services:
     networks:
       - ps05_network
 
+  migrate:
+    build:
+      context: ./services/api
+      dockerfile: Dockerfile
+    container_name: ps05_migrate
+    restart: "no"
+    command: ["alembic", "upgrade", "head"]
+    environment:
+      - ENVIRONMENT=development
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-forensic_admin}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env before starting}@db:5432/${POSTGRES_DB:-ps05_evidence_db}
+    volumes:
+      - ./services/api:/app
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - ps05_network
+
   api:
     build:
       context: ./services/api
@@ -60,6 +78,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     networks:
       - ps05_network
 
@@ -84,6 +104,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     networks:
       - ps05_network
 
