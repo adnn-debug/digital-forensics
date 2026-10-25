@@ -60,7 +60,7 @@ async def _enforce_login_rate_limit(request: Request, email: str) -> None:
         return {ip_count, account_count}
         """
         counts = await client.eval(script, 2, ip_key, account_key, 900)
-        ip_count, account_count = int(counts[1]), int(counts[2])
+        ip_count, account_count = int(counts[0]), int(counts[1])
     except Exception as exc:
         logger.error("Login rate-limit store unavailable (%s)", type(exc).__name__)
         raise HTTPException(
