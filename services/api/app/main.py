@@ -62,13 +62,17 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
     )
 
-    # Security & CORS Middleware
+    # Explicit CORS allowlist. Localhost is permitted only in non-production environments.
+    allowed_origins = [settings.FRONTEND_URL.rstrip("/")]
+    if settings.ENVIRONMENT in ("development", "testing"):
+        allowed_origins.append("http://localhost:3000")
+
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=[settings.FRONTEND_URL, "http://localhost:3000"],
+        allow_origins=list(dict.fromkeys(allowed_origins)),
         allow_credentials=True,
         allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-        allow_headers=["*"],
+        allow_headers=["Authorization", "Content-Type", "Accept", "X-Request-ID"],
     )
 
     # Request Timing and Security Headers Middleware
@@ -82,8 +86,13 @@ def create_app() -> FastAPI:
         response.headers["X-Process-Time-MS"] = str(process_time_ms)
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["X-Frame-Options"] = "DENY"
-        response.headers["X-XSS-Protection"] = "1; mode=block"
-        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+        response.headers["Referrer-Policy"] = "no-referrer"
+        response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+        response.headers["X-Permitted-Cross-Domain-Policies"] = "none"
+        if request.url.scheme == "https":
+            response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+        if request.url.path.startswith("/api/v1/auth/"):
+            response.headers["Cache-Control"] = "no-store"
         return response
 
     # Centralized Exception Handling
