@@ -414,9 +414,9 @@ export async function uploadEvidenceWithProgress(
 export async function createAnalysisJob(payload: {
   evidence_id: string;
   analysis_type: string;
-  parameters?: Record<string, unknown>;
-  examiner_notes?: string;
-  idempotency_key?: string;
+  parameters?: Record<string, unknown> | undefined;
+  examiner_notes?: string | undefined;
+  idempotency_key?: string | undefined;
 }): Promise<AnalysisJobCreateResponse> {
   return apiRequest<AnalysisJobCreateResponse>("/analysis/jobs", {
     method: "POST",
@@ -429,12 +429,12 @@ export async function getAnalysisJob(jobId: string): Promise<ForensicAnalysisJob
 }
 
 export async function getAnalysisHistory(filters: {
-  evidence_id?: string;
-  case_id?: string;
-  status?: string;
-  analysis_type?: string;
-  page?: number;
-  page_size?: number;
+  evidence_id?: string | undefined;
+  case_id?: string | undefined;
+  status?: string | undefined;
+  analysis_type?: string | undefined;
+  page?: number | undefined;
+  page_size?: number | undefined;
 } = {}): Promise<PaginatedResponse<ForensicAnalysisJob>> {
   const query = new URLSearchParams();
   for (const [key, value] of Object.entries(filters)) {
@@ -463,13 +463,13 @@ export async function listCaseReports(caseId: string): Promise<ReportRead[]> {
 export async function generateCourtroomReport(
   caseId: string,
   payload: {
-    title?: string;
-    included_evidence_ids?: string[];
-    examiner_certification?: string;
-    jurisdiction?: string;
-    court_name?: string;
-    docket_number?: string;
-    classification_marking?: string;
+    title?: string | undefined;
+    included_evidence_ids?: string[] | undefined;
+    examiner_certification?: string | undefined;
+    jurisdiction?: string | undefined;
+    court_name?: string | undefined;
+    docket_number?: string | undefined;
+    classification_marking?: string | undefined;
   },
 ): Promise<ReportRead> {
   const result = await apiRequest<Omit<ReportRead, "sha256_hash" | "generated_at" | "examiner_name" | "evidence_count" | "is_sealed">>(
