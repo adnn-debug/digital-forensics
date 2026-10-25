@@ -272,20 +272,33 @@ class StagedStorageTransaction:
         for item in self.staged_items:
             target_path = self.adapter._resolve_key_path(item.target_key)
             target_path.parent.mkdir(parents=True, exist_ok=True)
-            if item.staging_path.exists():
-                shutil.move(str(item.staging_path), str(target_path))
-                if lock_readonly and item.target_key.startswith("originals/"):
-                    self.adapter.lock_readonly(item.target_key)
-                logger.info(
-                    "Committed staged file → key='%s' (%d bytes)",
-                    item.target_key,
-                    item.metadata.file_size_bytes,
+            if not item.staging_path.is_file():
+                raise StorageException(
+                    message="Staged file is missing; refusing to report a successful promotion.",
+                    path=item.target_key,
                 )
-            else:
-                logger.warning(
-                    "Staged file missing at commit time; skipping: %s",
-                    item.staging_path,
-                )
+            try:
+                # Hard-link creation is atomic and fails if the target already exists.
+                # Unlike shutil.move, this cannot silently replace an evidence file in a race.
+                os.link(item.staging_path, target_path)
+                item.staging_path.unlink()
+            except FileExistsError as exc:
+                raise StorageException(
+                    message="Storage key already exists; overwrite is forbidden.",
+                    path=item.target_key,
+                ) from exc
+            except OSError as exc:
+                raise StorageException(
+                    message="Could not atomically promote staged evidence.",
+                    path=item.target_key,
+                ) from exc
+            if lock_readonly and item.target_key.startswith("originals/"):
+                self.adapter.lock_readonly(item.target_key)
+            logger.info(
+                "Committed staged file → key='%s' (%d bytes)",
+                item.target_key,
+                item.metadata.file_size_bytes,
+            )
         self._committed = True
         self.staged_items.clear()
 
