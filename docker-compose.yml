@@ -95,6 +95,8 @@ services:
         INTERNAL_API_URL: http://api:8000
     container_name: ps05_web
     restart: unless-stopped
+    # Source and .next are bind-mounted for development, so run Next.js in dev mode.
+    command: ["npm", "run", "dev"]
     ports:
       - "127.0.0.1:3000:3000"
     environment:
