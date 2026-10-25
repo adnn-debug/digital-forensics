@@ -41,7 +41,23 @@ make setup
 .\run.ps1 setup
 ```
 
-#### 2. Run with Docker Compose
+#### 2. Configure secrets before starting
+
+Copy the template and replace both placeholders with unique values. Do not commit your local `.env` file.
+
+```bash
+cp .env.example .env
+```
+
+Generate a strong API signing key with Python:
+
+```bash
+python -c "import secrets; print(secrets.token_urlsafe(48))"
+```
+
+Use the generated value for `SECRET_KEY`, choose a unique `POSTGRES_PASSWORD`, and update the password in `DATABASE_URL` to match. The Compose configuration now refuses to start without the required values. PostgreSQL and Redis are private to the Compose network; the web and API ports bind to localhost for local development.
+
+#### 3. Run with Docker Compose
 ```bash
 # Launch PostgreSQL, Redis, FastAPI Backend, Worker, and Next.js Frontend:
 docker compose up -d
