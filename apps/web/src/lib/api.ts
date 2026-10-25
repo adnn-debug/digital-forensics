@@ -31,7 +31,7 @@ export interface SystemReadiness {
   environment: string;
   timestamp: string;
   subsystems: {
-    database: { status: string; latency_ms?: number; error?: string };
+    database: { status: string; latency_ms?: number; database?: string; error?: string };
     redis: { status: string; latency_ms?: number; error?: string };
     storage: {
       status: string;
