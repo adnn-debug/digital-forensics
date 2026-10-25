@@ -197,7 +197,8 @@ async def logout(
 
     audit_repo = AuditRepository(db)
     timestamp = datetime.now(UTC)
-    previous = await audit_repo.get_latest_event()
+    # LOGIN and LOGOUT intentionally form their own authentication audit chain.
+    previous = await audit_repo.get_latest_auth_event()
     previous_hash = previous.event_hash if previous else None
     action = f"User {current_user.id} logged out"
     event_hash = compute_event_hash(
