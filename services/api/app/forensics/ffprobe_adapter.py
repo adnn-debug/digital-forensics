@@ -318,6 +318,21 @@ class FFprobeAdapter(BaseMetadataAdapter):
             except (ValueError, TypeError):
                 nb_frames = "Unavailable"
 
+        # Timestamps
+        start_time_val: float | str = "Unavailable"
+        if "start_time" in s and s["start_time"] is not None:
+            try:
+                start_time_val = round(float(s["start_time"]), 4)
+            except (ValueError, TypeError):
+                start_time_val = "Unavailable"
+
+        start_pts_val: int | str = "Unavailable"
+        if "start_pts" in s and s["start_pts"] is not None:
+            try:
+                start_pts_val = int(s["start_pts"])
+            except (ValueError, TypeError):
+                start_pts_val = "Unavailable"
+
         return {
             "stream_index": s.get("index", 0),
             "codec_name": s.get("codec_name") or "Unavailable",
@@ -334,6 +349,34 @@ class FFprobeAdapter(BaseMetadataAdapter):
             "frame_count": nb_frames,
             "color_space": s.get("color_space") or "Unavailable",
             "color_range": s.get("color_range") or "Unavailable",
+            "start_time_seconds": start_time_val,
+            "start_pts": start_pts_val,
+            "time_base": s.get("time_base") or "Unavailable",
+            "tags": s.get("tags", {}),
+            "disposition": s.get("disposition", {}),
+        }
+
+    def inspect_video_streams(self, file_path: Path) -> dict[str, Any]:
+        """
+        Focused inspection of video streams extracting duration, codec,
+        dimensions, frame rate, timestamps, and available stream metadata.
+        """
+        result = self.extract_metadata(file_path)
+        metadata = result.filtered_forensic_metadata
+        video_streams = metadata.get("video_streams", [])
+        container = metadata.get("container", {})
+
+        return {
+            "success": result.success,
+            "tool_name": result.tool_name,
+            "tool_version": result.tool_version,
+            "file_sha256": result.provenance.get("file_sha256_at_extraction", ""),
+            "container": container,
+            "video_streams": video_streams,
+            "primary_stream": video_streams[0] if video_streams else None,
+            "has_video": len(video_streams) > 0,
+            "errors": result.errors,
+            "forensic_authenticity_notice": metadata.get("forensic_authenticity_notice", FORENSIC_CONTAINER_DISCLAIMER),
         }
 
     def _normalize_audio_stream(self, s: dict[str, Any]) -> dict[str, Any]:
@@ -366,16 +409,86 @@ class FFprobeAdapter(BaseMetadataAdapter):
             except (ValueError, TypeError):
                 a_duration = "Unavailable"
 
+        # Bit depth
+        bit_depth: int | str = "Unavailable"
+        for key in ("bits_per_raw_sample", "bits_per_sample"):
+            if key in s and s[key] is not None:
+                try:
+                    bd_val = int(s[key])
+                    if bd_val > 0:
+                        bit_depth = bd_val
+                        break
+                except (ValueError, TypeError):
+                    pass
+        if bit_depth == "Unavailable":
+            sample_fmt = str(s.get("sample_fmt") or "").lower()
+            if sample_fmt in ("s16", "s16p"):
+                bit_depth = 16
+            elif sample_fmt in ("s32", "s32p", "flt", "fltp"):
+                bit_depth = 32
+            elif sample_fmt in ("u8", "u8p"):
+                bit_depth = 8
+            elif sample_fmt in ("s24", "s24p"):
+                bit_depth = 24
+            elif sample_fmt in ("dbl", "dblp"):
+                bit_depth = 64
+
+        # Timestamps
+        start_time_val: float | str = "Unavailable"
+        if "start_time" in s and s["start_time"] is not None:
+            try:
+                start_time_val = round(float(s["start_time"]), 4)
+            except (ValueError, TypeError):
+                start_time_val = "Unavailable"
+
+        start_pts_val: int | str = "Unavailable"
+        if "start_pts" in s and s["start_pts"] is not None:
+            try:
+                start_pts_val = int(s["start_pts"])
+            except (ValueError, TypeError):
+                start_pts_val = "Unavailable"
+
         return {
             "stream_index": s.get("index", 0),
             "codec_name": s.get("codec_name") or "Unavailable",
             "codec_long_name": s.get("codec_long_name") or "Unavailable",
+            "profile": s.get("profile") or "Unavailable",
             "sample_rate_hz": sample_rate,
             "channels": channels,
             "channel_layout": s.get("channel_layout") or "Unavailable",
             "sample_format": s.get("sample_fmt") or "Unavailable",
+            "bit_depth": bit_depth,
             "bitrate_bps": a_bitrate,
             "duration_seconds": a_duration,
+            "start_time_seconds": start_time_val,
+            "start_pts": start_pts_val,
+            "time_base": s.get("time_base") or "Unavailable",
+            "tags": s.get("tags", {}),
+            "disposition": s.get("disposition", {}),
+        }
+
+    def inspect_audio_streams(self, file_path: Path) -> dict[str, Any]:
+        """
+        Focused inspection of audio streams extracting duration, codec,
+        sample rate, channels, bit depth, timestamps, and stream metadata.
+        """
+        result = self.extract_metadata(file_path)
+        metadata = result.filtered_forensic_metadata
+        audio_streams = metadata.get("audio_streams", [])
+        container = metadata.get("container", {})
+
+        return {
+            "success": result.success,
+            "tool_name": result.tool_name,
+            "tool_version": result.tool_version,
+            "file_sha256": result.provenance.get("file_sha256_at_extraction", ""),
+            "container": container,
+            "audio_streams": audio_streams,
+            "primary_stream": audio_streams[0] if audio_streams else None,
+            "has_audio": len(audio_streams) > 0,
+            "audio_stream_count": len(audio_streams),
+            "errors": result.errors,
+            "forensic_authenticity_notice": metadata.get("forensic_authenticity_notice", FORENSIC_CONTAINER_DISCLAIMER),
         }
 
     @staticmethod

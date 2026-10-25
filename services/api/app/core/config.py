@@ -78,6 +78,10 @@ class Settings(BaseSettings):
         default="ffprobe",
         description="Binary executable name or absolute path for FFprobe",
     )
+    FFMPEG_PATH: str = Field(
+        default="ffmpeg",
+        description="Binary executable name or absolute path for FFmpeg",
+    )
     FORENSIC_SUBPROCESS_TIMEOUT_SECONDS: int = Field(
         default=30,
         description="Strict execution timeout in seconds for forensic CLI subprocesses",

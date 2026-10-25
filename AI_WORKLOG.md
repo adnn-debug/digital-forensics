@@ -261,5 +261,191 @@ check what previous prompts i have given and how much work is pending and comple
 | **Frontend Types** | `npm run typecheck` (apps/web) | 0 | **Clean compilation with 0 TypeScript errors** |
 | **Frontend Build** | `npm run build` (apps/web) | 0 | **Compiled successfully (▲ Next.js 14.2.24)**; all 9 routes generated |
 
+---
+
+## Session: 2026-10-25 (Persistent Project Memory, Cross-Account Recovery & Workflow Setup)
+
+### Prompt Identifier
+- **Prompt:** User Task: Set up persistent project memory and cross-account recovery for Bihar Cyber Hackathon 2026 PS-05.
+- **Scope:** Documentation and workflow setup only. Application source code, schemas, and dependencies preserved unchanged.
+
+### Tasks Performed
+1. **Workspace & Git State Inspection:**
+   - Inspected Git status (`git status`): Clean working tree on branch `main` at commit `6804aa5`.
+   - Verified that no untracked user code changes were pending.
+2. **Comprehensive Empirical Verification:**
+   - Ran full backend test suite: `python -m pytest -v` -> **109 passed, 3 warnings in 60.87s**.
+   - Ran backend static typecheck: `mypy --config-file mypy.ini app tests` -> **Success: no issues found in 100 source files**.
+   - Ran frontend TypeScript typecheck: `npm run typecheck` (in `apps/web`) -> **Clean compilation with 0 errors**.
+   - Ran frontend production build: `npm run build` (in `apps/web`) -> **Compiled successfully (▲ Next.js 14.2.24)**, all 9 routes generated.
+3. **Queue Architecture Reconciliation:**
+   - Investigated background worker queue: Confirmed codebase uses **Redis Queue (`rq>=2.0.0`)**, not Celery. Reconciled documentation in `PROJECT_CONTEXT.md` and added `ADR-009` in `DECISIONS.md`.
+4. **Persistent Project Memory & Recovery Setup:**
+   - Created `AGENTS.md`: Permanent operating instructions and token-efficient startup protocol.
+   - Updated `PROJECT_CONTEXT.md`: Stable system architecture, verified tech stack, storage/database triggers, and forensic constraints.
+   - Created `HANDOFF.md`: Main entry point for new AI accounts summarizing architecture, Prompts 1–8 completion, test counts, and entry points.
+   - Created `CURRENT_TASK.md`: Recovery checkpoint ledger (set to IDLE with template for future tasks).
+   - Updated `TASK_TRACKER.md`: Mapped Prompts 1–8 to verified tasks and documented verification status.
+   - Updated `DECISIONS.md`: Appended ADR-009 documenting adoption of RQ over Celery.
+   - Updated `README.md`: Reconciled status from Phase 2 to Phase 8 Complete & Verified, updated queue references and verified test commands.
+
+### Files Created or Modified
+| Action | File | Description |
+| :--- | :--- | :--- |
+| **Created** | `AGENTS.md` | Permanent operating instructions for AI coding agents |
+| **Created** | `HANDOFF.md` | New account entry point, verified architecture, and system baseline |
+| **Created** | `CURRENT_TASK.md` | Recovery checkpoint ledger for in-flight tasks |
+| **Updated** | `PROJECT_CONTEXT.md` | Reconciled system architecture, verified stack, RQ queue, and security invariants |
+| **Updated** | `AI_WORKLOG.md` | Appended session log and verification records |
+| **Updated** | `TASK_TRACKER.md` | Reconciled prompt mappings and verified statuses |
+| **Updated** | `DECISIONS.md` | Appended ADR-009 (Redis Queue adoption over Celery) |
+| **Updated** | `README.md` | Reconciled platform status, architecture guarantees, and quickstart |
+
+### Commands Executed & Real Verified Results
+| Subsystem | Command | Exit Code | Verified Output / Result |
+| :--- | :--- | :---: | :--- |
+| **Git Status** | `git status` | 0 | Branch `main`, working tree clean |
+| **Backend Tests** | `python -m pytest -v` | 0 | **109 passed, 3 warnings in 60.87s** |
+| **Backend Types** | `mypy --config-file mypy.ini app tests` | 0 | **Success: no issues found in 100 source files** |
+| **Backend Lint** | `ruff check . --config pyproject.toml` | 1 | 1 fixable import sorting issue in `test_courtroom_report.py` (preserved to avoid modifying code) |
+| **Frontend Types** | `npm run typecheck` (apps/web) | 0 | **Clean compilation with 0 TypeScript errors** |
+| **Frontend Build** | `npm run build` (apps/web) | 0 | **Compiled successfully (▲ Next.js 14.2.24)**; all 9 static and dynamic routes generated |
+
+### Incomplete Work & Known Issues
+- None. Prompts 1–8 are complete and verified. Persistent memory files are fully established.
+
+---
+
+## Session: 2026-10-25 (Prompt 9 — Video Evidence Analysis)
+
+### Objective
+Implement the next video-analysis capability in the existing architecture:
+- Inspect video streams using FFprobe (duration, codec, dimensions, frame rate, timestamps, available stream metadata).
+- Use FFmpeg to extract a bounded number of representative frames at controlled timestamps.
+- Validate inputs, use subprocess argument lists without `shell=True`, enforce timeouts, limit output size, duration, resolution, and resource usage.
+- Store extracted frames and derived outputs separately from the immutable original evidence (`storage/artifacts/`).
+- Record tool versions, extraction settings, timestamps, errors, and provenance.
+- Handle corrupt, unsupported, oversized, and non-video inputs safely.
+- Integrate with the existing job queue and findings/artifact interfaces.
+- Return clear errors or partial results when analysis cannot complete; do not claim video manipulation has been proven.
+
+### Tasks Performed & Features Implemented
+1. **Config Enhancement (`app/core/config.py`):**
+   - Added `FFMPEG_PATH: str = Field(default="ffmpeg", description="Path to ffmpeg binary")`.
+2. **Binary Subprocess Streaming (`app/forensics/base.py`):**
+   - Added `execute_bounded_bytes(...)` to `SafeSubprocessRunner` to capture binary stdout data without utf-8 string decoding corruption, enabling high-performance PNG piped frame extraction without disk scratch overhead.
+3. **FFprobe Stream Inspector (`app/forensics/ffprobe_adapter.py`):**
+   - Enhanced `_normalize_video_stream` to parse `start_time_seconds`, `start_pts`, `time_base`, stream `tags`, and `disposition`.
+   - Added `inspect_video_streams(file_path: Path) -> dict[str, Any]` returning stream details, counts, primary stream profile, and tool version metadata.
+4. **FFmpeg Frame Extraction Adapter (`app/forensics/ffmpeg_adapter.py`):**
+   - Built `FFmpegAdapter` supporting bounded frame extraction at controlled timestamps or evenly distributed across video duration.
+   - Enforced maximum frame extraction bounds (capped at 50 frames), per-frame timeouts (default 15.0s), and resolution scaling (`scale='min(1920,iw)':min(1080,ih):force_original_aspect_ratio=decrease'`).
+   - Implemented strict input validation: rejecting non-existent, 0-byte, oversized (>2GB), non-video, and malformed files before and during decoding.
+   - Enforced command injection protection via argument lists with `--` positional boundary markers and `shell=False`.
+   - Computed dHash perceptual hashes (`compute_frame_dhash`) and SHA-256 digests for each extracted frame.
+   - Embedded standard forensic non-manipulation disclaimer (`FORENSIC_FRAME_EXTRACTION_DISCLAIMER`).
+5. **Video Forensics Engine Integration (`app/forensics/video_engine.py`):**
+   - Integrated `FFprobeAdapter` and `FFmpegAdapter` directly into `VideoForensicsEngine.analyze_file`.
+   - Enriched `VideoAnalysisResult` and its summary payload with `ffprobe_stream_metadata` and `ffmpeg_extraction_result`.
+   - Added defensive 0-byte empty file check and corrupt container mismatch findings (`FindingSeverity.HIGH`).
+   - Recorded scientific integrity limitations confirming representative frame variations do not prove selective tampering.
+6. **Worker Job Queue Dispatch (`app/queue/tasks.py`):**
+   - Added extraction of optional `timestamps` list parameter and passed into `video_engine.analyze_file`.
+7. **Comprehensive Automated Test Coverage:**
+   - Added `tests/unit/test_ffmpeg_adapter.py` (13 tests covering versions, controlled timestamps, evenly spaced frames, bounding caps, resolution limits, non-existent, empty, non-video, corrupt bytes, oversized files, parameter injection safety, stream inspection, and dHash calculation).
+   - Added tests in `tests/unit/test_video_engine.py` covering controlled timestamps, empty files, and corrupt video files.
+
+### Files Created or Modified
+| Action | File | Description |
+| :--- | :--- | :--- |
+| **Created** | `services/api/app/forensics/ffmpeg_adapter.py` | FFmpeg frame extraction adapter with defensive sandboxing & bounded sampling |
+| **Created** | `services/api/tests/unit/test_ffmpeg_adapter.py` | Comprehensive unit tests for FFmpeg adapter and FFprobe stream inspection |
+| **Modified** | `services/api/app/core/config.py` | Added `FFMPEG_PATH` setting |
+| **Modified** | `services/api/app/forensics/base.py` | Added `execute_bounded_bytes` method to `SafeSubprocessRunner` |
+| **Modified** | `services/api/app/forensics/ffprobe_adapter.py` | Added `inspect_video_streams` and detailed stream metadata parsing |
+| **Modified** | `services/api/app/forensics/video_engine.py` | Integrated FFprobe & FFmpeg adapters with OpenCV analysis |
+| **Modified** | `services/api/app/queue/tasks.py` | Forwarded optional `timestamps` parameter to video analysis job |
+| **Modified** | `services/api/tests/unit/test_video_engine.py` | Added tests for controlled timestamps, 0-byte, and corrupt video files |
+| **Modified** | `CURRENT_TASK.md` | Recorded task completion and reset to IDLE |
+| **Modified** | `TASK_TRACKER.md` | Registered TASK-9.1 as Verified |
+| **Modified** | `HANDOFF.md` | Updated system health baseline and test counts |
+
+### Commands Executed & Real Verified Results
+| Subsystem | Command | Exit Code | Verified Output / Result |
+| :--- | :--- | :---: | :--- |
+| **Backend Tests (Video Focus)** | `python -m pytest tests/unit/test_video_engine.py tests/unit/test_ffmpeg_adapter.py -v` | 0 | **19 passed in 14.01s** |
+| **Worker Queue Integration** | `python -m pytest tests/integration/test_worker_queue.py -v` | 0 | **6 passed, 3 warnings in 1.54s** |
+| **Full Backend Test Suite** | `python -m pytest` | 0 | **125 passed, 3 warnings in 71.57s** (baseline increased from 109 to 125) |
+| **Backend Type Safety** | `mypy --config-file mypy.ini app tests` | 0 | **Success: no issues found in 102 source files** |
+| **Backend Lint** | `ruff check --config pyproject.toml app/forensics/ tests/unit/test_ffmpeg_adapter.py tests/unit/test_video_engine.py` | 0 | **All checks passed!** |
+| **Frontend Type Safety** | `npm run typecheck` (apps/web) | 0 | **Clean compilation with 0 TypeScript errors** |
+
+### Incomplete Work & Known Issues
+- None. Prompt 9 video evidence analysis is complete, verified, and integrated with zero regressions.
+
+---
+
+## 2026-10-25 16:58 — Session Milestone: Prompt 10 (Audio Evidence Analysis)
+
+### Objective
+Implement comprehensive audio evidence analysis within the PS-05 forensic architecture:
+- Extract technical stream metadata via FFprobe (`inspect_audio_streams`).
+- Implement bounded, controlled audio decoding via FFmpeg (`decode_audio_stream`) with WAV PCM fallback.
+- Enforce strict resource limits: duration (`max_duration_seconds`), sample rate (`max_sample_rate_hz`), channel count (`max_channels`), memory (`max_pcm_bytes`), and file size (`max_file_size_bytes`).
+- Safely handle malformed, unsupported, silent, truncated, 0-byte, and oversized audio without crashing.
+- Preserve bitstream read-only integrity (`chmod 0400`) and verify intake SHA-256 baseline.
+- Compute STFT frequency spectrogram and time-domain waveform envelopes; render dark-themed courtroom artifacts stored in `storage/artifacts/` with SHA-256 hashes.
+- Detect lossy low-pass frequency roll-off shelves (e.g. MP3/AAC 15-18kHz) and digital clipping.
+- Record analysis parameters, tool versions, provenance, and courtroom forensic disclaimers.
+- Strictly adhere to forensic neutrality: do not label audio authentic or manipulated solely from waveform or spectrogram appearance.
+
+### Implementation Details
+1. **FFprobe Audio Inspection (`app/forensics/ffprobe_adapter.py`):**
+   - Added `inspect_audio_streams(self, file_path: Path) -> dict[str, Any]` returning container info, list of audio streams, primary audio stream profile, `has_audio` flag, tool version, and forensic authenticity notice.
+   - Enhanced `_normalize_audio_stream` to capture `profile`, `bit_depth` (from `bits_per_raw_sample`, `bits_per_sample`, or inferred from sample format), `start_time_seconds`, `start_pts`, `time_base`, `tags`, and `disposition`.
+2. **FFmpeg Bounded Audio Stream Decoding (`app/forensics/ffmpeg_adapter.py`):**
+   - Added `AudioDecodeResult` dataclass and constants (`DEFAULT_MAX_AUDIO_BYTES`, `DEFAULT_MAX_AUDIO_DURATION_SECONDS`, `DEFAULT_MAX_PCM_DECODE_BYTES`, `DEFAULT_AUDIO_SAMPLE_RATE`).
+   - Implemented `decode_audio_stream` using `SafeSubprocessRunner.execute_bounded_bytes` with `-t` duration bounding, stdout byte bounds, downmix to mono (`-ac 1`), and raw `f32le` PCM streaming.
+   - Defensive checks for 0-byte, non-existent, oversized, and non-audio files.
+3. **Forensic Audio Engine (`app/forensics/audio_engine.py`):**
+   - Refactored `AudioForensicsEngine` to version 2.0.0.
+   - Combined FFprobe inspection + FFmpeg bounded decode + WAV PCM fallback.
+   - Added silence detection (`rms_amplitude < 1e-6 and max_amplitude == 0.0`) producing safe STFT visual floor and `Silent Audio Signal Detected` INFO finding without division-by-zero or log10(0) issues.
+   - Added digital clipping anomaly detection and lossy cutoff shelf detection.
+   - Added duration truncation detection when decoded length is significantly shorter than container declared length.
+   - Rendered courtroom-grade dark-themed STFT Spectrogram PNG and Waveform PNG artifacts with SHA-256 hashes.
+   - Documented complete provenance, tool versions, analysis parameters, and courtroom forensic limitations.
+4. **Queue Worker Dispatch (`app/queue/tasks.py`):**
+   - Forwarded analysis `parameters` to `audio_engine.analyze_file`.
+5. **Comprehensive Automated Test Suite (`tests/unit/test_audio_engine.py`):**
+   - Expanded tests from 3 to 14, covering normal PCM WAV, clipping detection, SHA-256 tamper detection, silent audio handling, simulated MP3 15kHz low-pass cutoff shelf, empty (0-byte) files, oversized files, malformed non-audio bytes, non-existent files, duration bounding, courtroom disclaimers, FFprobe audio inspection, FFmpeg audio decoding, and FFmpeg resource limits.
+
+### Files Created or Modified
+| Action | File | Description |
+| :--- | :--- | :--- |
+| **Modified** | `services/api/app/forensics/ffprobe_adapter.py` | Added `inspect_audio_streams` and expanded audio stream normalization |
+| **Modified** | `services/api/app/forensics/ffmpeg_adapter.py` | Added `AudioDecodeResult` and `decode_audio_stream` method |
+| **Modified** | `services/api/app/forensics/audio_engine.py` | Enhanced engine with bounded decoding, silence handling, clipping, and disclaimers |
+| **Modified** | `services/api/app/forensics/__init__.py` | Exported audio/video engines and adapter classes |
+| **Modified** | `services/api/app/queue/tasks.py` | Forwarded `parameters` to audio analysis job |
+| **Modified** | `services/api/tests/unit/test_audio_engine.py` | Comprehensive test suite expanded to 14 tests |
+| **Modified** | `CURRENT_TASK.md` | Recorded task completion and reset to IDLE |
+| **Modified** | `TASK_TRACKER.md` | Registered TASK-10.1 as Verified |
+| **Modified** | `HANDOFF.md` | Updated system health baseline and test counts |
+
+### Commands Executed & Real Verified Results
+| Subsystem | Command | Exit Code | Verified Output / Result |
+| :--- | :--- | :---: | :--- |
+| **Audio Engine Tests** | `python -m pytest services/api/tests/unit/test_audio_engine.py -v` | 0 | **14 passed in 25.75s** |
+| **Forensic & FFmpeg Adapters** | `python -m pytest services/api/tests/unit/test_forensic_adapters.py services/api/tests/unit/test_ffmpeg_adapter.py -v` | 0 | **27 passed in 17.95s** |
+| **Full Backend Test Suite** | `python -m pytest services/api/tests -v` | 0 | **136 passed, 3 warnings in 94.98s** (baseline increased from 125 to 136) |
+| **Backend Type Safety** | `mypy --config-file mypy.ini app tests` | 0 | **Success: no issues found in 102 source files** |
+| **Frontend Type Safety** | `npm run typecheck` (apps/web) | 0 | **Clean compilation with 0 TypeScript errors** |
+
+### Incomplete Work & Known Issues
+- None. Prompt 10 audio evidence analysis is complete, verified, and integrated with zero regressions.
+
+
+
 
 

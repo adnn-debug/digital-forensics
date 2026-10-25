@@ -16,7 +16,6 @@ def sample_video_path(tmp_path: Path) -> Path:
     video_file = tmp_path / "test_evidence.mp4"
     width, height = 160, 120
     fps = 10
-    total_frames = 10
 
     fourcc = cv2.VideoWriter_fourcc(*"mp4v")  # type: ignore[attr-defined]
     out = cv2.VideoWriter(str(video_file), fourcc, fps, (width, height))
@@ -92,3 +91,63 @@ def test_video_engine_tamper_detection(sample_video_path: Path) -> None:
     tamper_findings = [f for f in result.findings if f.finding_type == "HASH_TAMPER"]
     assert len(tamper_findings) == 1
     assert tamper_findings[0].severity == "CRITICAL"
+
+
+def test_video_engine_with_controlled_timestamps(sample_video_path: Path) -> None:
+    """Verify video analysis with explicit timestamps passed."""
+    hasher = MultiHasher()
+    digests = hasher.hash_file(sample_video_path)
+
+    engine = VideoForensicsEngine(max_keyframes=4)
+    result = engine.analyze_file(
+        file_path=sample_video_path,
+        expected_sha256=digests.sha256,
+        evidence_number="TEST-VID-TS",
+        timestamps=[0.1, 0.6],
+    )
+
+    assert result.properties.is_valid_stream is True
+    assert len(result.keyframes) >= 1
+    # Check that timestamps are recorded
+    assert any(kf.timestamp_seconds >= 0.0 for kf in result.keyframes)
+
+
+def test_video_engine_empty_file_handling(tmp_path: Path) -> None:
+    """Verify that an empty file returns invalid stream without crashing."""
+    empty_video = tmp_path / "empty.mp4"
+    empty_video.write_bytes(b"")
+
+    engine = VideoForensicsEngine()
+    fake_hash = "0" * 64
+
+    result = engine.analyze_file(
+        file_path=empty_video,
+        expected_sha256=fake_hash,
+        evidence_number="TEST-EMPTY",
+    )
+
+    assert result.properties.is_valid_stream is False
+    assert len(result.keyframes) == 0
+    mismatch_findings = [f for f in result.findings if f.finding_type == "CONTAINER_MISMATCH"]
+    assert len(mismatch_findings) >= 1
+
+
+def test_video_engine_corrupt_file_handling(tmp_path: Path) -> None:
+    """Verify corrupted non-video data returns invalid stream gracefully."""
+    corrupt_video = tmp_path / "corrupt.mp4"
+    corrupt_video.write_bytes(b"GARBAGE_NON_VIDEO_DATA" * 50)
+
+    engine = VideoForensicsEngine()
+    hasher = MultiHasher()
+    digests = hasher.hash_file(corrupt_video)
+
+    result = engine.analyze_file(
+        file_path=corrupt_video,
+        expected_sha256=digests.sha256,
+        evidence_number="TEST-CORRUPT",
+    )
+
+    assert result.properties.is_valid_stream is False
+    assert len(result.keyframes) == 0
+    assert any(f.finding_type == "CONTAINER_MISMATCH" for f in result.findings)
+

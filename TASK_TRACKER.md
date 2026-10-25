@@ -9,44 +9,49 @@
 
 ---
 
-## Milestone Summary
+## Milestone Summary (Prompts 1–9)
 
-| Milestone | Total Tasks | Verified | In Progress | Planned | Blocked |
+| Milestone & Associated Prompt | Total Tasks | Verified | In Progress | Planned | Blocked |
 | :--- | :---: | :---: | :---: | :---: | :---: |
-| **Phase 1: Scaffolding & Core Infrastructure** | 2 | 2 | 0 | 0 | 0 |
-| **Phase 2: Domain Modeling & Immutability Triggers** | 3 | 3 | 0 | 0 | 0 |
-| **Phase 3: Storage Abstraction & Ingestion Engine** | 3 | 3 | 0 | 0 | 0 |
-| **Phase 4: Durable Worker & Metadata Extraction** | 3 | 3 | 0 | 0 | 0 |
-| **Phase 5: Deep Forensic Analysis Engines** | 3 | 3 | 0 | 0 | 0 |
-| **Phase 6: Courtroom PDF Report Engine** | 2 | 2 | 0 | 0 | 0 |
-| **Phase 7: Next.js Forensic Dashboard** | 3 | 3 | 0 | 0 | 0 |
-| **Phase 8: System Hardening & Acceptance** | 2 | 2 | 0 | 0 | 0 |
-| **Total** | **21** | **21** | **0** | **0** | **0** |
+| **Prompt 1 / Phase 1: Scaffolding & Core Infrastructure** | 2 | 2 | 0 | 0 | 0 |
+| **Prompt 2 / Phase 2: Domain Modeling & Immutability Triggers** | 3 | 3 | 0 | 0 | 0 |
+| **Prompt 3 / Phase 3: Storage Abstraction & Ingestion Engine** | 3 | 3 | 0 | 0 | 0 |
+| **Prompt 4 / Phase 4: Durable Worker Fleet & Metadata Extraction** | 3 | 3 | 0 | 0 | 0 |
+| **Prompt 5 / Phase 5: Deep Forensic Analysis Engines** | 3 | 3 | 0 | 0 | 0 |
+| **Prompt 6 / Phase 6: Courtroom PDF Report Engine** | 2 | 2 | 0 | 0 | 0 |
+| **Prompt 7 / Phase 7: Next.js 14 Forensic Dashboard** | 3 | 3 | 0 | 0 | 0 |
+| **Prompt 8 / Phase 8: System Hardening & Acceptance** | 2 | 2 | 0 | 0 | 0 |
+| **Prompt 9: Video Evidence Analysis (FFprobe & FFmpeg)** | 1 | 1 | 0 | 0 | 0 |
+| **Prompt 10: Audio Evidence Analysis (FFprobe, FFmpeg & STFT)** | 1 | 1 | 0 | 0 | 0 |
+| **Total** | **23** | **23** | **0** | **0** | **0** |
 
 ---
 
 ## Detailed Task Register
 
-### Phase 1: Scaffolding & Core Infrastructure
+### Prompt 1 / Phase 1: Scaffolding & Core Infrastructure
+*Objective: Create initial repository foundation with FastAPI modular monolith, Next.js web console, storage directories, configuration, health/readiness endpoints, Makefile, and Docker Compose.*
 
 | Task ID | Task Description | Status | Related Files | Dependencies | Verification Evidence |
 | :--- | :--- | :---: | :--- | :--- | :--- |
-| **TASK-1.1** | Multi-container setup (Docker Compose, environment configs, Dockerfiles) | **Verified** | `docker-compose.yml`, `.env`, `docker/*` | None | Files present, `.env` configured, Docker Compose valid syntax |
-| **TASK-1.2** | FastAPI modular monolith skeleton, health/readiness probes, and storage paths | **Verified** | `services/api/app/main.py`, `services/api/app/core/*`, `services/api/tests/test_health.py` | TASK-1.1 | Pytest: 12 tests passed; HTTP 200 on `/api/v1/health` and `/api/v1/ready` |
+| **TASK-1.1** | Multi-container setup (Docker Compose, environment configs, Dockerfiles) | **Verified** | `docker-compose.yml`, `.env`, `docker/*` | None | Valid compose config; environment variables loaded via Pydantic Settings |
+| **TASK-1.2** | FastAPI modular monolith skeleton, health/readiness probes, and storage paths | **Verified** | `services/api/app/main.py`, `services/api/app/core/*`, `services/api/tests/test_health.py` | TASK-1.1 | 12 tests passed; HTTP 200 on `/api/v1/health` and `/api/v1/ready` |
 
 ---
 
-### Phase 2: Domain Modeling & Immutable Audit Triggers
+### Prompt 2 / Phase 2: Domain Modeling & Immutable Audit Triggers
+*Objective: Implement SQLAlchemy 2.0 ORM models, Alembic migrations, scoped async sessions, and database-level anti-tamper triggers for audit immutability.*
 
 | Task ID | Task Description | Status | Related Files | Dependencies | Verification Evidence |
 | :--- | :--- | :---: | :--- | :--- | :--- |
 | **TASK-2.1** | Scoped async session factory, engine configuration, and connectivity checks | **Verified** | `services/api/app/db/session.py`, `services/api/app/db/base.py` | TASK-1.2 | `check_db_connectivity()` verified in readiness probe test |
 | **TASK-2.2** | SQLAlchemy 2.0 ORM domain entities (User, Case, EvidenceItem, HashVerification, MetadataExtract, ForensicAnalysis, AnalysisArtifact, AuditEvent, Report) | **Verified** | `services/api/app/db/models/*` | TASK-2.1 | `test_full_domain_lifecycle_and_relationships` passed (Pytest) |
-| **TASK-2.3** | Alembic migration schema and database anti-tamper triggers (Postgres PL/pgSQL & SQLite) | **Verified** | `services/api/alembic/versions/0001_initial_schema.py`, `services/api/app/db/triggers.py`, `services/api/tests/integration/test_audit_immutability.py` | TASK-2.2 | `test_audit_immutability.py` (3 tests passed); Ruff and Mypy passed |
+| **TASK-2.3** | Alembic migration schema and database anti-tamper triggers (Postgres PL/pgSQL & SQLite) | **Verified** | `services/api/alembic/versions/0001_initial_schema.py`, `services/api/app/db/triggers.py`, `services/api/tests/integration/test_audit_immutability.py` | TASK-2.2 | `test_audit_immutability.py` (3 tests passed); triggers abort SQL UPDATE/DELETE on audit_events |
 
 ---
 
-### Phase 3: Storage Provider Abstraction, Ingestion & Multi-Hashing
+### Prompt 3 / Phase 3: Storage Provider Abstraction, Ingestion & Multi-Hashing
+*Objective: Build streaming multi-hasher (SHA-256, SHA-1, MD5), two-phase staged storage transaction, read-only vault permission locking, and independent tamper detection.*
 
 | Task ID | Task Description | Status | Related Files | Dependencies | Verification Evidence |
 | :--- | :--- | :---: | :--- | :--- | :--- |
@@ -56,7 +61,8 @@
 
 ---
 
-### Phase 4: Durable Worker & Metadata Extraction Engine
+### Prompt 4 / Phase 4: Durable Worker Fleet & Metadata Extraction Engine
+*Objective: Build durable background job queue (Redis Queue / RQ) with PostgreSQL state mirroring, worker crash recovery, and sandboxed ExifTool and FFprobe adapters.*
 
 | Task ID | Task Description | Status | Related Files | Dependencies | Verification Evidence |
 | :--- | :--- | :---: | :--- | :--- | :--- |
@@ -66,7 +72,8 @@
 
 ---
 
-### Phase 5: Deep Forensic Analysis Engines
+### Prompt 5 / Phase 5: Deep Forensic Analysis Engines
+*Objective: Implement deep media analysis engines: JPEG Error Level Analysis (ELA) with heatmaps, OpenCV video keyframe & scene change extraction, and SciPy audio STFT spectrogram analyzer.*
 
 | Task ID | Task Description | Status | Related Files | Dependencies | Verification Evidence |
 | :--- | :--- | :---: | :--- | :--- | :--- |
@@ -76,7 +83,8 @@
 
 ---
 
-### Phase 6: Courtroom PDF Report Engine
+### Prompt 6 / Phase 6: Courtroom PDF Report Engine
+*Objective: Build deterministic courtroom examination PDF report engine using ReportLab Platypus, embedded hash seals, dynamic QR verification codes, and chain of custody logs.*
 
 | Task ID | Task Description | Status | Related Files | Dependencies | Verification Evidence |
 | :--- | :--- | :---: | :--- | :--- | :--- |
@@ -85,7 +93,8 @@
 
 ---
 
-### Phase 7: Next.js Forensic Dashboard & Visualizers
+### Prompt 7 / Phase 7: Next.js 14 Forensic Dashboard & Visualizers
+*Objective: Build Next.js 14 investigative web console with case/evidence management, chunked upload, interactive ELA heatmap viewer, audio waveform player, and video keyframes.*
 
 | Task ID | Task Description | Status | Related Files | Dependencies | Verification Evidence |
 | :--- | :--- | :---: | :--- | :--- | :--- |
@@ -95,9 +104,29 @@
 
 ---
 
-### Phase 8: System Hardening & End-to-End Acceptance
+### Prompt 8 / Phase 8: System Hardening & End-to-End Acceptance
+*Objective: End-to-end acceptance testing, automated bit-flip tamper detection simulation, path traversal security testing, and subprocess command injection protection.*
 
 | Task ID | Task Description | Status | Related Files | Dependencies | Verification Evidence |
 | :--- | :--- | :---: | :--- | :--- | :--- |
 | **TASK-8.1** | Automated bit-flip tamper simulation and immediate detection acceptance test | **Verified** | `services/api/tests/integration/test_tamper_detection.py`, `services/api/tests/test_evidence_intake.py` | All previous | Bit-flip simulations on disk trigger audit alerts and invalidate verification |
 | **TASK-8.2** | Security audit (path traversal, subprocess injection, DoS protection) | **Verified** | `services/api/tests/unit/test_forensic_adapters.py`, `services/api/tests/test_storage.py` | All previous | Subprocess parameter injection mitigations, path traversal mitigations, and file validation verified |
+
+---
+
+### Prompt 9: Video Evidence Analysis (FFprobe Stream Inspection & FFmpeg Frame Extraction)
+*Objective: Implement video stream inspection (FFprobe) and bounded representative frame extraction (FFmpeg) with parameter injection safety, resource limits, artifact isolation, and partial error handling without claiming tamper proof.*
+
+| Task ID | Task Description | Status | Related Files | Dependencies | Verification Evidence |
+| :--- | :--- | :---: | :--- | :--- | :--- |
+| **TASK-9.1** | FFprobe video stream inspection and FFmpeg bounded representative frame extraction adapter | **Verified** | `services/api/app/forensics/ffmpeg_adapter.py`, `services/api/app/forensics/ffprobe_adapter.py`, `services/api/app/forensics/video_engine.py`, `services/api/app/queue/tasks.py`, `services/api/tests/unit/test_ffmpeg_adapter.py`, `services/api/tests/unit/test_video_engine.py` | TASK-4.3, TASK-5.2 | 19 video tests passed (`test_ffmpeg_adapter.py` and `test_video_engine.py`); bounded frame sampling, resolution bounding, subprocess argument list injection resistance, 0-byte/corrupt handling, and provenance recording verified. |
+
+---
+
+### Prompt 10: Audio Evidence Analysis (FFprobe, FFmpeg & STFT Spectrogram/Waveform)
+*Objective: Implement audio stream inspection (FFprobe), bounded controlled decoding (FFmpeg), acoustic amplitude/clipping detection, STFT spectral metrics and low-pass cutoff detection, courtroom PNG artifact rendering, silent/truncated/oversized handling, and forensic disclaimer enforcement.*
+
+| Task ID | Task Description | Status | Related Files | Dependencies | Verification Evidence |
+| :--- | :--- | :---: | :--- | :--- | :--- |
+| **TASK-10.1** | FFprobe audio stream inspection, FFmpeg bounded PCM decoding, and AudioForensicsEngine | **Verified** | `services/api/app/forensics/ffprobe_adapter.py`, `services/api/app/forensics/ffmpeg_adapter.py`, `services/api/app/forensics/audio_engine.py`, `services/api/app/queue/tasks.py`, `services/api/tests/unit/test_audio_engine.py` | TASK-4.3, TASK-5.3 | 14 audio tests passed in `test_audio_engine.py`; 136 full backend test suite passed; bounded decoding, silence handling, clipping detection, lossy shelf detection, 0-byte/oversized handling, and courtroom disclaimers verified. |
+

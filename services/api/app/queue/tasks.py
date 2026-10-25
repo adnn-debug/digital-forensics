@@ -261,11 +261,20 @@ async def _execute_analysis_job_async(
                 physical_path = adapter.get_local_path_readonly(evidence.storage_path)
 
                 max_kf = int(parameters.get("max_keyframes", 10))
+                raw_ts = parameters.get("timestamps")
+                timestamps_param: list[float] | None = None
+                if isinstance(raw_ts, list):
+                    try:
+                        timestamps_param = [float(t) for t in raw_ts]
+                    except (ValueError, TypeError):
+                        timestamps_param = None
+
                 video_engine = VideoForensicsEngine(max_keyframes=max_kf)
                 vid_result = video_engine.analyze_file(
                     file_path=physical_path,
                     expected_sha256=evidence.primary_hash_sha256,
                     evidence_number=evidence.evidence_number,
+                    timestamps=timestamps_param,
                 )
 
                 # Persist extracted keyframe artifacts
@@ -338,6 +347,7 @@ async def _execute_analysis_job_async(
                     file_path=physical_path,
                     expected_sha256=evidence.primary_hash_sha256,
                     evidence_number=evidence.evidence_number,
+                    parameters=parameters,
                 )
 
                 # Persist Spectrogram Artifact

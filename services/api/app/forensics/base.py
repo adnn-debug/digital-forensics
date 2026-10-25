@@ -140,6 +140,68 @@ class SafeSubprocessRunner:
                 f"Failed to execute forensic tool '{safe_cmd[0]}': {exc}"
             ) from exc
 
+    @staticmethod
+    def execute_bounded_bytes(
+        cmd: list[str],
+        *,
+        timeout_seconds: int = DEFAULT_TIMEOUT_SECONDS,
+        max_output_bytes: int = DEFAULT_MAX_OUTPUT_BYTES,
+        cwd: Path | None = None,
+    ) -> tuple[int, bytes, str]:
+        """
+        Execute command with strict isolation and timeouts, returning raw stdout bytes.
+        """
+        if not cmd or not isinstance(cmd, list | tuple):
+            raise ForensicExecutionError("Command must be a non-empty sequence of string arguments.")
+
+        safe_cmd = [str(arg) for arg in cmd]
+        logger.debug("Executing safe forensic binary command: %s (timeout=%ds)", safe_cmd[0], timeout_seconds)
+
+        try:
+            proc = subprocess.Popen(
+                safe_cmd,
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                shell=False,
+                cwd=str(cwd) if cwd else None,
+            )
+
+            try:
+                raw_stdout, raw_stderr = proc.communicate(timeout=timeout_seconds)
+            except subprocess.TimeoutExpired as exc:
+                proc.kill()
+                proc.communicate()
+                raise ForensicExecutionError(
+                    f"Subprocess '{safe_cmd[0]}' exceeded strict timeout of {timeout_seconds}s."
+                ) from exc
+
+            if len(raw_stdout) > max_output_bytes:
+                logger.warning(
+                    "Stdout from %s exceeded %d bytes (%d bytes), truncating.",
+                    safe_cmd[0],
+                    max_output_bytes,
+                    len(raw_stdout),
+                )
+                raw_stdout = raw_stdout[:max_output_bytes]
+
+            if len(raw_stderr) > max_output_bytes:
+                raw_stderr = raw_stderr[:max_output_bytes]
+
+            stderr_str = raw_stderr.decode("utf-8", errors="replace")
+            return proc.returncode, raw_stdout, stderr_str
+
+        except FileNotFoundError as exc:
+            raise ForensicExecutionError(
+                f"Forensic tool binary '{safe_cmd[0]}' was not found on the system PATH."
+            ) from exc
+        except Exception as exc:
+            if isinstance(exc, ForensicExecutionError):
+                raise
+            raise ForensicExecutionError(
+                f"Failed to execute forensic tool '{safe_cmd[0]}': {exc}"
+            ) from exc
+
 
 class BaseMetadataAdapter(abc.ABC):
     """Abstract base adapter for forensic metadata extraction tools."""

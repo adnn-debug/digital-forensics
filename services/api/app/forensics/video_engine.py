@@ -24,6 +24,8 @@ import cv2
 import numpy as np
 
 from app.db.models.finding import FindingSeverity, FindingType
+from app.forensics.ffmpeg_adapter import FFmpegAdapter
+from app.forensics.ffprobe_adapter import FFprobeAdapter
 from app.forensics.image_engine import HashIntegrityResult, StructuredFinding
 from app.storage.hasher import MultiHasher
 
@@ -101,9 +103,11 @@ class VideoAnalysisResult:
     limitations: list[str]
     execution_duration_ms: float
     completed_at: str
+    ffprobe_stream_metadata: dict[str, Any] = field(default_factory=dict)
+    ffmpeg_extraction_result: dict[str, Any] = field(default_factory=dict)
 
     def to_summary_dict(self) -> dict[str, Any]:
-        return {
+        d = {
             "container_properties": self.properties.to_dict(),
             "hash_integrity": self.hash_integrity.to_dict(),
             "temporal_metrics": self.temporal_metrics.to_dict(),
@@ -116,6 +120,11 @@ class VideoAnalysisResult:
             "opencv_version": cv2.__version__,
             "numpy_version": np.__version__,
         }
+        if self.ffprobe_stream_metadata:
+            d["ffprobe_stream_metadata"] = self.ffprobe_stream_metadata
+        if self.ffmpeg_extraction_result:
+            d["ffmpeg_extraction_result"] = self.ffmpeg_extraction_result
+        return d
 
 
 def compute_dhash(image_gray: np.ndarray, hash_size: int = 8) -> str:
@@ -134,10 +143,18 @@ def compute_dhash(image_gray: np.ndarray, hash_size: int = 8) -> str:
 
 
 class VideoForensicsEngine:
-    """Engine executing temporal slicing, scene transition, and keyframe indexing."""
+    """Engine executing stream inspection, FFmpeg frame extraction, and temporal analysis."""
 
-    def __init__(self, max_keyframes: int = MAX_KEYFRAMES_DEFAULT) -> None:
+    def __init__(
+        self,
+        max_keyframes: int = MAX_KEYFRAMES_DEFAULT,
+        *,
+        ffprobe_adapter: FFprobeAdapter | None = None,
+        ffmpeg_adapter: FFmpegAdapter | None = None,
+    ) -> None:
         self.max_keyframes = max_keyframes
+        self.ffprobe_adapter = ffprobe_adapter or FFprobeAdapter()
+        self.ffmpeg_adapter = ffmpeg_adapter or FFmpegAdapter(ffprobe_adapter=self.ffprobe_adapter)
 
     def analyze_file(
         self,
@@ -145,6 +162,7 @@ class VideoForensicsEngine:
         expected_sha256: str,
         evidence_number: str = "EVID-000",
         max_keyframes: int | None = None,
+        timestamps: list[float] | None = None,
     ) -> VideoAnalysisResult:
         """Execute full video forensic workflow against local video file."""
         start_time = time.perf_counter()
@@ -172,6 +190,7 @@ class VideoForensicsEngine:
             "Scene boundary thresholds are heuristic; high-motion or strobe lighting may register false positive scene cuts.",
             "Variable frame rate (VFR) video can exhibit timestamp jitter that does not constitute malicious splicing.",
             "Compression artifacts and GOP structure are heavily codec-dependent and require contextual correlation with audio and metadata.",
+            "Representative frame rendering variations do not establish intentional tampering or selective manipulation.",
         ]
 
         if not is_intact:
@@ -193,9 +212,89 @@ class VideoForensicsEngine:
                 )
             )
 
-        # 2. Open Video Capture
+        # 2. Check for empty or 0-byte file
+        if file_path.stat().st_size == 0:
+            duration_ms = (time.perf_counter() - start_time) * 1000.0
+            props = VideoContainerProperties(
+                width=0,
+                height=0,
+                dimensions="0x0",
+                aspect_ratio="N/A",
+                aspect_ratio_float=0.0,
+                fps=0.0,
+                total_frames=0,
+                duration_seconds=0.0,
+                codec_fourcc="NONE",
+                is_valid_stream=False,
+            )
+            findings.append(
+                StructuredFinding(
+                    finding_type=FindingType.CONTAINER_MISMATCH.value,
+                    severity=FindingSeverity.HIGH.value,
+                    title="Empty Media File",
+                    description="File is empty (0 bytes). No decodable video stream.",
+                    confidence_score=1.0,
+                )
+            )
+            metrics = TemporalAnalysisMetrics(
+                scene_change_count=0,
+                scene_change_timestamps=[],
+                frozen_frame_sequences_count=0,
+                average_frame_diff=0.0,
+                max_frame_diff=0.0,
+                keyframe_count=0,
+            )
+            return VideoAnalysisResult(
+                properties=props,
+                hash_integrity=hash_integrity,
+                temporal_metrics=metrics,
+                keyframes=[],
+                findings=findings,
+                limitations=limitations,
+                execution_duration_ms=round(duration_ms, 2),
+                completed_at=completed_at,
+            )
+
+        # 3. FFprobe Stream Inspection
+        probe_info: dict[str, Any] = {}
+        try:
+            probe_info = self.ffprobe_adapter.inspect_video_streams(file_path)
+        except Exception as exc:
+            logger.warning("FFprobe stream inspection could not execute on %s: %s", file_path, exc)
+
+        # 4. FFmpeg Representative Frame Extraction
+        ffmpeg_frames_result: dict[str, Any] = {}
+        ffmpeg_keyframes: list[VideoKeyframe] = []
+        if self.ffmpeg_adapter.is_available():
+            try:
+                extraction = self.ffmpeg_adapter.extract_representative_frames(
+                    file_path,
+                    timestamps=timestamps,
+                    max_frames=cap_max_keyframes,
+                    evidence_number=evidence_number,
+                )
+                ffmpeg_frames_result = extraction.to_dict()
+                for frm in extraction.frames:
+                    ffmpeg_keyframes.append(
+                        VideoKeyframe(
+                            frame_index=frm.frame_index,
+                            timestamp_seconds=frm.timestamp_seconds,
+                            image_bytes=frm.image_bytes,
+                            filename=frm.filename,
+                            mime_type=frm.mime_type,
+                            sha256=frm.sha256,
+                            dhash=frm.dhash,
+                            width=frm.width,
+                            height=frm.height,
+                            is_scene_change=False,
+                        )
+                    )
+            except Exception as exc:
+                logger.warning("FFmpeg frame extraction encountered error on %s: %s", file_path, exc)
+
+        # 5. Open Video Capture with OpenCV for temporal analysis
         cap = cv2.VideoCapture(str(file_path))
-        if not cap.isOpened():
+        if not cap.isOpened() and not ffmpeg_keyframes:
             duration_ms = (time.perf_counter() - start_time) * 1000.0
             props = VideoContainerProperties(
                 width=0,
@@ -214,7 +313,7 @@ class VideoForensicsEngine:
                     finding_type=FindingType.CONTAINER_MISMATCH.value,
                     severity=FindingSeverity.HIGH.value,
                     title="Unreadable Video Stream Container",
-                    description="OpenCV failed to demux or decode video stream from the container.",
+                    description="Decoders failed to demux or decode video stream from the container.",
                     confidence_score=0.9,
                 )
             )
@@ -233,19 +332,41 @@ class VideoForensicsEngine:
                 keyframes=[],
                 findings=findings,
                 limitations=limitations,
-                execution_duration_ms=duration_ms,
+                execution_duration_ms=round(duration_ms, 2),
                 completed_at=completed_at,
+                ffprobe_stream_metadata=probe_info,
+                ffmpeg_extraction_result=ffmpeg_frames_result,
             )
 
-        # 3. Read Stream Metadata Properties
-        width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-        height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-        fps = float(cap.get(cv2.CAP_PROP_FPS) or 0.0)
-        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
-        fourcc_int = int(cap.get(cv2.CAP_PROP_FOURCC))
-        fourcc_str = "".join([chr((fourcc_int >> 8 * i) & 0xFF) for i in range(4)]).strip()
+        # 6. Read Stream Metadata Properties (reconcile OpenCV and FFprobe)
+        width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)) if cap.isOpened() else 0
+        height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)) if cap.isOpened() else 0
+        fps = float(cap.get(cv2.CAP_PROP_FPS) or 0.0) if cap.isOpened() else 0.0
+        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0) if cap.isOpened() else 0
+        fourcc_int = int(cap.get(cv2.CAP_PROP_FOURCC)) if cap.isOpened() else 0
+        fourcc_str = "".join([chr((fourcc_int >> 8 * i) & 0xFF) for i in range(4)]).strip() if cap.isOpened() else "NONE"
+
+        primary_v = probe_info.get("primary_stream") or {}
+        if (width == 0 or height == 0) and primary_v:
+            w_p = primary_v.get("width")
+            h_p = primary_v.get("height")
+            if isinstance(w_p, int) and isinstance(h_p, int):
+                width, height = w_p, h_p
+
+        if fps <= 0.0 and primary_v:
+            raw_fps = primary_v.get("frame_rate")
+            if isinstance(raw_fps, str) and "fps" in raw_fps:
+                try:
+                    fps = float(raw_fps.replace("fps", "").strip())
+                except ValueError:
+                    pass
 
         duration_sec = (total_frames / fps) if fps > 0 and total_frames > 0 else 0.0
+        if duration_sec <= 0.0 and primary_v.get("duration_seconds"):
+            dur_p = primary_v.get("duration_seconds")
+            if isinstance(dur_p, int | float):
+                duration_sec = float(dur_p)
+
         ar_float = (width / height) if height > 0 else 0.0
         gcd = math.gcd(width, height) if width > 0 and height > 0 else 1
         aspect_ratio = f"{width // gcd}:{height // gcd}" if gcd > 0 else "N/A"
@@ -264,18 +385,19 @@ class VideoForensicsEngine:
         )
 
         if fps <= 0 or total_frames <= 0:
-            findings.append(
-                StructuredFinding(
-                    finding_type=FindingType.CONTAINER_MISMATCH.value,
-                    severity=FindingSeverity.MEDIUM.value,
-                    title="Anomalous Frame Header Statistics",
-                    description=f"Container reported invalid FPS ({fps}) or frame count ({total_frames}).",
-                    confidence_score=0.8,
+            if not primary_v:
+                findings.append(
+                    StructuredFinding(
+                        finding_type=FindingType.CONTAINER_MISMATCH.value,
+                        severity=FindingSeverity.MEDIUM.value,
+                        title="Anomalous Frame Header Statistics",
+                        description=f"Container reported invalid FPS ({fps}) or frame count ({total_frames}).",
+                        confidence_score=0.8,
+                    )
                 )
-            )
 
-        # 4. Temporal Analysis Loop & Keyframe Extraction
-        keyframes: list[VideoKeyframe] = []
+        # 7. Temporal Analysis Loop & Keyframe Extraction
+        cv_keyframes: list[VideoKeyframe] = []
         scene_change_timestamps: list[float] = []
         frame_diffs: list[float] = []
         prev_gray: np.ndarray | None = None
@@ -284,82 +406,88 @@ class VideoForensicsEngine:
 
         frame_idx = 0
 
-        while True:
-            ret, frame = cap.read()
-            if not ret:
-                break
+        if cap.isOpened():
+            while True:
+                ret, frame = cap.read()
+                if not ret:
+                    break
 
-            current_timestamp = (frame_idx / fps) if fps > 0 else 0.0
-            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+                current_timestamp = (frame_idx / fps) if fps > 0 else 0.0
+                gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
-            # Scene Cut / Frame Difference detection
-            is_scene_cut = False
-            if prev_gray is not None:
-                # Compute absolute frame difference
-                diff = cv2.absdiff(gray, prev_gray)
-                mean_diff = float(np.mean(diff))
-                frame_diffs.append(mean_diff)
+                is_scene_cut = False
+                if prev_gray is not None:
+                    diff = cv2.absdiff(gray, prev_gray)
+                    mean_diff = float(np.mean(diff))
+                    frame_diffs.append(mean_diff)
 
-                if mean_diff < 0.1:
-                    consecutive_frozen += 1
-                else:
-                    if consecutive_frozen >= 15:  # ~0.5 second of identical frames
-                        frozen_sequences_count += 1
-                    consecutive_frozen = 0
+                    if mean_diff < 0.1:
+                        consecutive_frozen += 1
+                    else:
+                        if consecutive_frozen >= 15:
+                            frozen_sequences_count += 1
+                        consecutive_frozen = 0
 
-                if mean_diff >= SCENE_DIFF_THRESHOLD:
-                    is_scene_cut = True
-                    scene_change_timestamps.append(round(current_timestamp, 3))
+                    if mean_diff >= SCENE_DIFF_THRESHOLD:
+                        is_scene_cut = True
+                        scene_change_timestamps.append(round(current_timestamp, 3))
 
-            # Decide whether to extract this frame as a keyframe
-            is_initial_frame = (frame_idx == 0)
-            should_extract = is_initial_frame or is_scene_cut
+                is_initial_frame = (frame_idx == 0)
+                should_extract = is_initial_frame or is_scene_cut
 
-            # Periodic keyframe selection if we don't have enough scene cuts
-            if not should_extract and len(keyframes) < cap_max_keyframes:
-                interval = max(1, total_frames // cap_max_keyframes) if total_frames > 0 else 30
-                if frame_idx % interval == 0:
-                    should_extract = True
+                if not should_extract and len(cv_keyframes) < cap_max_keyframes:
+                    interval = max(1, total_frames // cap_max_keyframes) if total_frames > 0 else 30
+                    if frame_idx % interval == 0:
+                        should_extract = True
 
-            if should_extract and len(keyframes) < cap_max_keyframes:
-                # Encode keyframe to PNG
-                success, encoded_buf = cv2.imencode(".png", frame)
-                if success:
-                    raw_png = encoded_buf.tobytes()
-                    dhash_val = compute_dhash(gray)
-                    kf_sha256 = MultiHasher().hash_bytes(raw_png).sha256
-                    kf_filename = f"{evidence_number}_keyframe_{frame_idx:05d}_{current_timestamp:.2f}s.png"
+                if should_extract and len(cv_keyframes) < cap_max_keyframes:
+                    success, encoded_buf = cv2.imencode(".png", frame)
+                    if success:
+                        raw_png = encoded_buf.tobytes()
+                        dhash_val = compute_dhash(gray)
+                        kf_sha256 = MultiHasher().hash_bytes(raw_png).sha256
+                        kf_filename = f"{evidence_number}_keyframe_{frame_idx:05d}_{current_timestamp:.2f}s.png"
 
-                    keyframe_obj = VideoKeyframe(
-                        frame_index=frame_idx,
-                        timestamp_seconds=round(current_timestamp, 3),
-                        image_bytes=raw_png,
-                        filename=kf_filename,
-                        mime_type="image/png",
-                        sha256=kf_sha256,
-                        dhash=dhash_val,
-                        width=width,
-                        height=height,
-                        is_scene_change=is_scene_cut,
-                    )
-                    keyframes.append(keyframe_obj)
+                        keyframe_obj = VideoKeyframe(
+                            frame_index=frame_idx,
+                            timestamp_seconds=round(current_timestamp, 3),
+                            image_bytes=raw_png,
+                            filename=kf_filename,
+                            mime_type="image/png",
+                            sha256=kf_sha256,
+                            dhash=dhash_val,
+                            width=width,
+                            height=height,
+                            is_scene_change=is_scene_cut,
+                        )
+                        cv_keyframes.append(keyframe_obj)
 
-            prev_gray = gray
-            frame_idx += 1
+                prev_gray = gray
+                frame_idx += 1
 
-            # Cap frame processing to protect against unbounded execution on giant files
-            if frame_idx >= 5000:
-                logger.warning("Video exceeds 5,000 frames; halting temporal loop for bounds protection.")
-                break
+                if frame_idx >= 5000:
+                    logger.warning("Video exceeds 5,000 frames; halting temporal loop for bounds protection.")
+                    break
 
-        cap.release()
+            cap.release()
 
-        # Handle final frozen sequence check
         if consecutive_frozen >= 15:
             frozen_sequences_count += 1
 
         avg_diff = float(np.mean(frame_diffs)) if frame_diffs else 0.0
         max_diff = float(np.max(frame_diffs)) if frame_diffs else 0.0
+
+        # Correlate keyframes: Prefer FFmpeg extracted keyframes when available,
+        # but mark scene cut boundaries discovered by temporal analysis
+        final_keyframes: list[VideoKeyframe] = []
+        if ffmpeg_keyframes:
+            for kf in ffmpeg_keyframes:
+                # Check if near a detected scene cut
+                near_scene_cut = any(abs(kf.timestamp_seconds - sc_ts) <= 0.25 for sc_ts in scene_change_timestamps)
+                kf.is_scene_change = near_scene_cut
+                final_keyframes.append(kf)
+        else:
+            final_keyframes = cv_keyframes
 
         metrics = TemporalAnalysisMetrics(
             scene_change_count=len(scene_change_timestamps),
@@ -367,10 +495,10 @@ class VideoForensicsEngine:
             frozen_frame_sequences_count=frozen_sequences_count,
             average_frame_diff=round(avg_diff, 3),
             max_frame_diff=round(max_diff, 3),
-            keyframe_count=len(keyframes),
+            keyframe_count=len(final_keyframes),
         )
 
-        # 5. Formulate Structured Findings
+        # 8. Formulate Structured Findings
         if frozen_sequences_count > 0:
             findings.append(
                 StructuredFinding(
@@ -410,9 +538,12 @@ class VideoForensicsEngine:
             properties=props,
             hash_integrity=hash_integrity,
             temporal_metrics=metrics,
-            keyframes=keyframes,
+            keyframes=final_keyframes,
             findings=findings,
             limitations=limitations,
             execution_duration_ms=round(execution_duration_ms, 2),
             completed_at=completed_at,
+            ffprobe_stream_metadata=probe_info,
+            ffmpeg_extraction_result=ffmpeg_frames_result,
         )
+

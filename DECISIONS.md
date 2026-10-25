@@ -15,6 +15,7 @@
 - [ADR-006: Programmatic PDF Report Engine (ReportLab vs Headless Chromium)](#adr-006-programmatic-pdf-report-engine-reportlab-vs-headless-chromium)
 - [ADR-007: Cryptographic Hash Chaining & DB Triggers for Audit Immutability](#adr-007-cryptographic-hash-chaining--db-triggers-for-audit-immutability)
 - [ADR-008: Dual-Engine SQLite/PostgreSQL Database Anti-Tamper Triggers](#adr-008-dual-engine-sqlitepostgresql-database-anti-tamper-triggers)
+- [ADR-009: Adoption of Redis Queue (RQ) for Worker Fleet over Celery](#adr-009-adoption-of-redis-queue-rq-for-worker-fleet-over-celery)
 
 ---
 
@@ -55,8 +56,8 @@
 
 ### ADR-003: Durable Asynchronous Task Queue & Broker
 
-- **Date:** 2026-10
-- **Status:** Accepted
+- **Date:** 2026-10 (Initial Architecture Phase)
+- **Status:** Superseded by ADR-009 (Adopted Redis Queue / RQ for Phase 4 Implementation)
 - **Decision & Context:**
   Use Celery with Redis 7.x as message broker, combined with PostgreSQL transactional state mirroring.
 - **Reasoning:**
@@ -152,3 +153,23 @@
 - **Consequences:**
   - *Positive:* Developers can run fast, isolated in-memory test suites that verify genuine database-level anti-tampering enforcement.
   - *Implications:* Trigger definitions must be maintained in both PL/pgSQL and SQLite SQL syntax within `app/db/triggers.py` and `alembic/versions/0001_initial_schema.py`.
+
+---
+
+### ADR-009: Adoption of Redis Queue (RQ) for Worker Fleet over Celery
+
+- **Date:** 2026-10-24 (Phase 4 Implementation)
+- **Status:** Accepted (Supersedes ADR-003 Celery selection for implementation)
+- **Decision & Context:**
+  Implement the asynchronous compute subsystem using **Redis Queue (RQ `~=2.0.0`)** with Redis 7 as the lightweight message transport broker, while keeping **PostgreSQL as the single authoritative source of truth** for task lifecycle state, heartbeat monitoring, and crash recovery.
+- **Reasoning:**
+  1. *Host OS & Windows Compatibility:* Local Windows development is a priority requirement for this project. Celery has documented instability and lack of native support for Windows without Unix process-forking primitives (`billiard`). RQ includes a built-in `SimpleWorker` that runs reliably on Windows without `os.fork()`.
+  2. *Authoritative State Simplicity:* Forensic requirements dictate that task states (`forensic_analyses`), audit trails, and finding deduplication must be committed in PostgreSQL. Celery’s heavy result backend and broker machinery add unnecessary operational overhead and potential state drift.
+  3. *Lightweight & Auditable Worker Logic:* RQ’s small footprint allowed clean implementation of automatic crash recovery on startup (`run_crash_recovery()`), watchdog heartbeat sweeping, and granular forensic finding deduplication (`clear_findings_for_analysis()`) in Python without fighting Celery's complex signal model.
+- **Alternatives Considered:**
+  1. *Celery:* Considered in ADR-003, but introduced unneeded dependency weight, friction on Windows workstations, and redundant state mechanisms.
+  2. *ARQ (Async Redis Queue):* Evaluated, but lacked mature worker process controls and standard execution tooling.
+- **Consequences:**
+  - *Positive:* Fast local startup, seamless Windows execution via `SimpleWorker`, robust production container execution via `Worker`, zero unnecessary dependencies, and complete synchronization with PostgreSQL.
+  - *Implications:* Worker functions run synchronously in the worker process while API handlers interface with Redis and PostgreSQL asynchronously. Relevant files: `services/api/app/queue/`, `services/api/app/worker.py`, `services/api/tests/integration/test_worker_queue.py`.
+
