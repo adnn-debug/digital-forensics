@@ -2,7 +2,7 @@
 
 from fastapi import APIRouter
 
-from app.api.v1 import analysis, auth, cases, evidence, health, reports
+from app.api.v1 import analysis, auth, cases, evidence, health, reports, report_verification
 
 api_v1_router = APIRouter()
 
@@ -23,4 +23,5 @@ api_v1_router.include_router(analysis.router)
 
 # Courtroom examination reports
 api_v1_router.include_router(reports.router)
+api_v1_router.include_router(report_verification.router)
 
