@@ -5,6 +5,7 @@ on:
     branches: [techx]
   push:
     branches: [techx, "fix/**"]
+  workflow_dispatch:
 
 permissions:
   contents: read
