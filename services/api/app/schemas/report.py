@@ -47,3 +47,8 @@ class ReportGenerateRequest(BaseModel):
         max_length=255,
     )
     included_evidence_ids: list[UUID] | None = None
+    examiner_certification: str | None = Field(default=None, max_length=255)
+    jurisdiction: str | None = Field(default=None, max_length=255)
+    court_name: str | None = Field(default=None, max_length=255)
+    docket_number: str | None = Field(default=None, max_length=128)
+    classification_marking: str | None = Field(default=None, max_length=128)
