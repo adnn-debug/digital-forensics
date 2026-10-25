@@ -22,6 +22,7 @@ from app.db.models.audit import AuditEvent, AuditEventType
 from app.db.models.case import Case
 from app.db.models.evidence import EvidenceItem, HashVerification, VerificationTrigger
 from app.db.models.user import User, UserRole
+from app.repositories.audit_repo import AuditRepository
 from app.repositories.case_repo import CaseRepository
 from app.repositories.evidence_repo import EvidenceRepository
 from app.storage.local import LocalFilesystemStorageAdapter
@@ -208,12 +209,14 @@ class EvidenceService:
                     f"Evidence '{evidence_number}' ({media_type.value}, {meta.file_size_bytes} bytes, "
                     f"sha256:{meta.hash_sha256[:12]}...) ingested into case '{case.case_number}' by {current_user.email}"
                 )
+                latest_audit = await AuditRepository(self.db).get_latest_event_for_case(case.id)
+                previous_hash = latest_audit.event_hash if latest_audit else None
                 event_hash = compute_event_hash(
                     event_type=AuditEventType.EVIDENCE_INGESTED.value,
                     action_description=action_desc,
                     user_id=str(current_user.id),
                     case_id=str(case.id),
-                    previous_hash=None,
+                    previous_hash=previous_hash,
                     timestamp=audit_ts,
                 )
                 audit_event = AuditEvent(
@@ -222,7 +225,7 @@ class EvidenceService:
                     user_id=current_user.id,
                     event_type=AuditEventType.EVIDENCE_INGESTED.value,
                     action_description=action_desc,
-                    previous_state_hash=None,
+                    previous_state_hash=previous_hash,
                     event_hash=event_hash,
                     payload_delta={
                         "evidence_number": evidence_number,
