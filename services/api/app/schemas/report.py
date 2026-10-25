@@ -27,7 +27,7 @@ class ReportBase(BaseModel):
 class ReportCreate(ReportBase):
     """Schema for persisting report metadata."""
 
-    pass
+    verification_token: str | None = Field(default=None, max_length=64)
 
 
 class ReportRead(ReportBase):
