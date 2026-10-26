@@ -125,6 +125,18 @@ def create_app() -> FastAPI:
     # Mount API v1 Routes
     app.include_router(api_v1_router, prefix=settings.API_V1_STR)
 
+    # Root endpoint: make the deployed API's base URL useful instead of returning 404.
+    @app.get("/", tags=["Root"])
+    async def root() -> dict[str, Any]:
+        return {
+            "name": settings.PROJECT_NAME,
+            "status": "ok",
+            "health": "/health",
+            "readiness": "/ready",
+            "docs": "/docs" if settings.DEBUG else None,
+            "api": settings.API_V1_STR,
+        }
+
     # Root Level Health Check Aliases (useful for standard Kubernetes / Docker health probes)
     app.add_api_route("/health", health_check, methods=["GET"], tags=["Root Health"])
     app.add_api_route("/ready", readiness_check, methods=["GET"], tags=["Root Readiness"])
