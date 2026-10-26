@@ -89,7 +89,7 @@ async def seed() -> None:
                 f"       ID       : {user.id}\n"
                 f"       Email    : {user.email}\n"
                 f"       Name     : {user.full_name}\n"
-                f"       Role     : {user.role.value}\n"
+                f"       Role     : {user.role}\n"
                 f"       Password : {INVESTIGATOR_PASSWORD}  (bcrypt-hashed in DB)\n"
             )
 

@@ -97,10 +97,10 @@ All tasks requested across Prompts 1 through 10 have been completed and verified
 
 ## 6. Known Environment Constraints & Inconsistencies
 
-1. **Host Docker Status:**
+1. **Host Docker & Redis Status:**
    - The local Windows host does not have Docker Desktop running in PATH.
-   - Automated tests run entirely in-memory using `aiosqlite` and `fakeredis`.
-   - Running live multi-container deployments (`docker compose up`) requires starting Docker Desktop on the host.
+   - Automated tests run in-memory using `aiosqlite` and `fakeredis`.
+   - In `development` mode without Docker/Redis running, `AnalysisJobService` automatically uses an in-process asynchronous fallback so task dispatches and polling succeed cleanly. In production, Redis queueing is enforced.
 2. **External CLI Tools on Host:**
    - `exiftool` and `ffmpeg` are containerized in `services/api/Dockerfile`.
    - If running the worker or API locally outside Docker, ExifTool and FFmpeg must be installed on the host's Windows PATH for full live media analysis.

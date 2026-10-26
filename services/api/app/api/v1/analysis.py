@@ -64,16 +64,29 @@ async def create_analysis_job(
     effective_idempotency_key = payload.idempotency_key or x_idempotency_key
 
     service = AnalysisJobService(db)
-    analysis, was_created = await service.enqueue_analysis(
-        evidence_id=payload.evidence_id,
-        analysis_type=payload.analysis_type,
-        parameters=payload.parameters,
-        examiner_notes=payload.examiner_notes,
-        idempotency_key=effective_idempotency_key,
-        max_retries=payload.max_retries,
-        timeout_seconds=payload.timeout_seconds,
-        initiated_by_id=current_user.id,
-    )
+    try:
+        analysis, was_created = await service.enqueue_analysis(
+            evidence_id=payload.evidence_id,
+            analysis_type=payload.analysis_type,
+            parameters=payload.parameters,
+            examiner_notes=payload.examiner_notes,
+            idempotency_key=effective_idempotency_key,
+            max_retries=payload.max_retries,
+            timeout_seconds=payload.timeout_seconds,
+            initiated_by_id=current_user.id,
+        )
+    except Exception as exc:
+        logger.exception("Failed to schedule forensic analysis job: %s", exc)
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={
+                "code": "TASK_QUEUE_UNAVAILABLE",
+                "message": (
+                    f"Forensic task queue is currently unavailable ({exc}). "
+                    "Please verify that the Redis broker is running."
+                ),
+            },
+        ) from exc
 
     msg = (
         "Analysis job successfully queued for execution"

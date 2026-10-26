@@ -3,9 +3,9 @@
 > **Rule:** If a task is active, record in-flight checkpoints here. When no task is active, keep Status as `IDLE`.
 
 - **Current Status:** IDLE
-- **Last Active Task:** Prompt 10 — Implement Audio Evidence Analysis (Completed & Verified)
-- **Completed At:** 2026-10-25 16:58 local
-- **Test Baseline:** 136 backend tests passed (100%), mypy clean (102 files), frontend typecheck clean (0 errors)
+- **Last Active Task:** Bugfix — Resolve "Failed to fetch" on Forensic Analysis Dispatch (Completed & Verified)
+- **Completed At:** 2026-10-25 19:57 local
+- **Test Baseline:** 136 backend tests passed (100%), mypy clean (102 files), frontend typecheck clean (0 errors), browser E2E verified
 
 ---
 

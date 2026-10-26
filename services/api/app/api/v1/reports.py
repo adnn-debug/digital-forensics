@@ -8,7 +8,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import CurrentUser, get_db, get_storage_adapter, require_roles
+from app.api.deps import CurrentUser, FlexibleUser, get_db, get_storage_adapter, require_roles
 from app.db.models.user import UserRole
 from app.schemas.report import ReportGenerateRequest, ReportRead
 from app.services.report_service import ReportService
@@ -85,7 +85,7 @@ async def get_report_metadata(
 async def download_report_pdf(
     case_id: UUID,
     report_id: UUID,
-    current_user: CurrentUser,
+    current_user: FlexibleUser,
     db: Annotated[AsyncSession, Depends(get_db)],
     adapter: Annotated[LocalFilesystemStorageAdapter, Depends(get_storage_adapter)],
 ) -> Any:

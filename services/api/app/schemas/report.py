@@ -3,7 +3,7 @@
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, computed_field
 
 
 class ReportBase(BaseModel):
@@ -32,6 +32,24 @@ class ReportRead(ReportBase):
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def sha256_hash(self) -> str:
+        """Alias for file_hash_sha256 for consistent client-side consumption."""
+        return self.file_hash_sha256
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def generated_at(self) -> datetime:
+        """Alias for created_at representing report generation timestamp."""
+        return self.created_at
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def evidence_count(self) -> int:
+        """Count of exhibits bundled in the report."""
+        return len(self.included_evidence_ids or [])
 
 
 class ReportGenerateRequest(BaseModel):

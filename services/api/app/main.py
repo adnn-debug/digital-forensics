@@ -8,6 +8,7 @@ from typing import Any
 
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from app.api.deps import get_storage
 from app.api.v1.health import health_check, readiness_check
@@ -63,9 +64,20 @@ def create_app() -> FastAPI:
     )
 
     # Security & CORS Middleware
+    frontend_origins = [
+        settings.FRONTEND_URL,
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "http://localhost:3001",
+        "http://127.0.0.1:3001",
+    ]
+    if "localhost" in settings.FRONTEND_URL:
+        frontend_origins.append(settings.FRONTEND_URL.replace("localhost", "127.0.0.1"))
+
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=[settings.FRONTEND_URL, "http://localhost:3000"],
+        allow_origins=list(dict.fromkeys(frontend_origins)),
+        allow_origin_regex=r"^https?://(localhost|127\.0\.0\.1)(:[0-9]+)?$",
         allow_credentials=True,
         allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
         allow_headers=["*"],
@@ -75,7 +87,28 @@ def create_app() -> FastAPI:
     @app.middleware("http")
     async def add_security_and_timing_headers(request: Request, call_next: Any) -> Response:
         start_time = time.perf_counter()
-        response: Response = await call_next(request)
+        try:
+            response: Response = await call_next(request)
+        except Exception as exc:
+            logger.exception("Unhandled error processing %s %s: %s", request.method, request.url.path, exc)
+            origin = request.headers.get("origin") or "*"
+            return JSONResponse(
+                status_code=500,
+                content={
+                    "error": {
+                        "code": "INTERNAL_SERVER_ERROR",
+                        "message": "An unexpected server error occurred. The incident has been logged.",
+                        "details": {"path": request.url.path},
+                    }
+                },
+                headers={
+                    "Access-Control-Allow-Origin": origin,
+                    "Access-Control-Allow-Credentials": "true",
+                    "Access-Control-Allow-Headers": "*",
+                    "Access-Control-Allow-Methods": "*",
+                },
+            )
+
         process_time_ms = round((time.perf_counter() - start_time) * 1000, 2)
 
         # Forensic Audit & Security Headers

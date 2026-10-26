@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from datetime import UTC, datetime, timedelta
 from typing import Any
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from rq import Retry
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -106,6 +106,29 @@ class AnalysisJobService:
             return analysis, True
 
         except Exception as exc:
+            from app.core.config import get_settings
+
+            settings = get_settings()
+            if settings.ENVIRONMENT in ("development", "testing") and queue_connection is None:
+                logger.warning(
+                    "Redis broker unreachable (%s). Using in-process background task fallback for [%s] mode.",
+                    exc,
+                    settings.ENVIRONMENT,
+                )
+                dev_job_id = f"dev-{uuid4().hex[:12]}"
+                analysis.job_id = dev_job_id
+                analysis.error_code = None
+                analysis.error_message = None
+                await self.session.commit()
+
+                import asyncio
+                from app.queue.tasks import _execute_analysis_job_async
+
+                asyncio.create_task(
+                    _execute_analysis_job_async(str(analysis.id), worker_id="dev-inprocess-worker")
+                )
+                return analysis, True
+
             logger.error("Failed to enqueue job %s into Redis: %s", analysis.id, exc)
             analysis.status = AnalysisStatus.FAILED.value
             analysis.error_code = "REDIS_ENQUEUE_ERROR"
@@ -197,15 +220,37 @@ class AnalysisJobService:
         analysis.error_message = None
         analysis.completed_at = None
 
-        conn = queue_connection or get_redis_sync_client()
-        q = get_queue(name=FORENSIC_QUEUE_NAME, connection=conn)
+        try:
+            conn = queue_connection or get_redis_sync_client()
+            q = get_queue(name=FORENSIC_QUEUE_NAME, connection=conn)
 
-        rq_job = q.enqueue(
-            run_analysis_job,
-            str(analysis.id),
-            job_timeout=analysis.timeout_seconds,
-            retry=Retry(max=analysis.max_retries, interval=[2, 5, 10]),
-        )
-        analysis.job_id = rq_job.id
-        await self.session.commit()
-        return analysis
+            rq_job = q.enqueue(
+                run_analysis_job,
+                str(analysis.id),
+                job_timeout=analysis.timeout_seconds,
+                retry=Retry(max=analysis.max_retries, interval=[2, 5, 10]),
+            )
+            analysis.job_id = rq_job.id
+            await self.session.commit()
+            return analysis
+        except Exception as exc:
+            from app.core.config import get_settings
+
+            settings = get_settings()
+            if settings.ENVIRONMENT in ("development", "testing") and queue_connection is None:
+                logger.warning(
+                    "Redis broker unreachable (%s) during retry. Using in-process execution fallback.",
+                    exc,
+                )
+                dev_job_id = f"dev-{uuid4().hex[:12]}"
+                analysis.job_id = dev_job_id
+                await self.session.commit()
+
+                import asyncio
+                from app.queue.tasks import _execute_analysis_job_async
+
+                asyncio.create_task(
+                    _execute_analysis_job_async(str(analysis.id), worker_id="dev-inprocess-worker")
+                )
+                return analysis
+            raise

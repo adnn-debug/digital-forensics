@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, Annotated, Any
 from uuid import UUID
 
 import redis.asyncio as aioredis
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Query, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError  # type: ignore[import-untyped]
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -168,11 +168,12 @@ async def get_current_user(
 async def get_current_user_flexible(
     credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(_bearer_scheme)],
     db: Annotated[AsyncSession, Depends(get_db)],
-    token: str | None = None,
+    token: Annotated[str | None, Query(description="Bearer token for browser-initiated downloads")] = None,
 ) -> User:
     """
     Validate JWT from either Authorization header or ?token= query parameter.
-    Enables authenticated media streaming (e.g., img tags in HTML).
+    Enables authenticated file downloads from browser <a> tags which cannot
+    send custom headers.
     """
     raw_token = credentials.credentials if credentials is not None else token
     if not raw_token:
@@ -207,7 +208,7 @@ async def get_current_user_flexible(
     return user
 
 
-# Type alias for route dependency
+# Type aliases for route dependencies
 CurrentUser = Annotated[User, Depends(get_current_user)]
 FlexibleUser = Annotated[User, Depends(get_current_user_flexible)]
 
